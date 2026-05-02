@@ -358,23 +358,6 @@ Install it manually with:
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
-## Testing A Local SDK Tarball
-
-If the SDK is not published yet, create a local package from the SDK repo:
-
-```powershell
-npm install
-npm pack
-```
-
-Then install the generated `.tgz` in your app:
-
-```powershell
-npm install C:\path\to\kittentts-react-native-0.8.0.tgz
-```
-
-Run `npm pack` again after SDK changes.
-
 ## Common Windows Issues
 
 | Problem | What to do |

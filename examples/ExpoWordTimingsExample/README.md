@@ -13,15 +13,6 @@ native modules for ONNX Runtime and filesystem access.
 Run these commands from the repository root. Use a development build; Expo Go
 will not work.
 
-From a fresh clone, generate the local SDK package first because the examples
-install `file:../../kittentts-react-native-0.8.0.tgz` and `.tgz` files are not
-committed:
-
-```bash
-npm install
-npm pack
-```
-
 Prerequisites:
 
 - Node.js >= 20

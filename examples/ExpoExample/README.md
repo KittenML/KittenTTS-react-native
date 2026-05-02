@@ -17,15 +17,6 @@ want word highlighting.
 Run these commands from the repository root. Use a development build; Expo Go
 will not work.
 
-From a fresh clone, generate the local SDK package first because the examples
-install `file:../../kittentts-react-native-0.8.0.tgz` and `.tgz` files are not
-committed:
-
-```bash
-npm install
-npm pack
-```
-
 Prerequisites:
 
 - Node.js >= 20
@@ -62,9 +53,8 @@ npx expo prebuild --platform android && cd android && ./gradlew assembleDebug
 
 ## Notes
 
-The example consumes the local SDK tarball through
-`file:../../kittentts-react-native-0.8.0.tgz`, matching how a published package
-is installed. Run `npm pack` from the repository root again after SDK changes.
+The example installs `@kittentts/react-native` from npm, the same way a user app
+does.
 Android 16 KB page-size handling lives in the SDK package, so
 regenerating `android/` does not require app-side patches.
 

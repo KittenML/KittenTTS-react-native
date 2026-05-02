@@ -759,7 +759,7 @@ Common commands:
 # Regenerate lib/ and the phonemizer runtime
 npm run build
 
-# Create the local .tgz package used by the examples
+# Create a local .tgz package for manual package inspection
 npm pack
 
 # Publish the public scoped package to npm after login
@@ -777,15 +777,15 @@ the public scoped package `@kittentts/react-native`. `prepublishOnly` runs the
 test suite, and `prepack` rebuilds the phonemizer runtime plus `lib/` before npm
 creates the package.
 
-To create the local package tarball used by the examples:
+To create a local package tarball for manual inspection:
 
 ```bash
 npm pack
 ```
 
 This writes a file like `kittentts-react-native-0.8.0.tgz` in the repository
-root. The tarball is ignored by git, so regenerate it locally before installing
-the examples from a fresh clone.
+root. The tarball is ignored by git. The included examples install
+`@kittentts/react-native` from npm, not from this tarball.
 
 If npm cache permissions fail locally, use:
 

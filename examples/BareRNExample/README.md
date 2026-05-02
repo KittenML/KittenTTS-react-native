@@ -25,15 +25,6 @@ the native Android/iOS projects.
 
 Run these commands from the repository root.
 
-From a fresh clone, generate the local SDK package first because the examples
-install `file:../../kittentts-react-native-0.8.0.tgz` and `.tgz` files are not
-committed:
-
-```bash
-npm install
-npm pack
-```
-
 Prerequisites:
 
 - Node.js >= 20

@@ -340,24 +340,6 @@ The APK will usually be here:
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Testing A Local SDK Tarball
-
-If you are testing this SDK before it is published to npm, build a local package
-from the SDK repository:
-
-```bash
-npm install
-npm pack
-```
-
-Then install the generated `.tgz` in your app:
-
-```bash
-npm install ../path/to/kittentts-react-native-0.8.0.tgz
-```
-
-Run `npm pack` again after SDK changes so the app receives the latest code.
-
 ## Common macOS Issues
 
 | Problem | What to do |
