@@ -1,0 +1,26 @@
+# The package is primarily controlled by package.json "files".
+# Keep this in sync as a fallback for accidental pack changes.
+
+# Example apps and local build artifacts
+examples/
+*.tgz
+node_modules/
+
+# Source-only inputs; npm receives generated lib/ instead.
+src/
+tests/
+vendor/
+tsconfig.json
+
+# Local/editor/tooling files
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+.env
+.env.*
+.eslintrc*
+.prettierrc*
+*.log
+*.tsbuildinfo

@@ -1,0 +1,272 @@
+import java.nio.file.Paths
+
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    classpath "com.android.tools.build:gradle:8.7.2"
+  }
+}
+
+apply plugin: "com.android.library"
+
+def getExtOrDefault(name, fallback) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback
+}
+
+static def findNodeModules(baseDir) {
+  def basePath = baseDir.toPath().normalize()
+  while (basePath) {
+    def nodeModulesPath = Paths.get(basePath.toString(), "node_modules")
+    def reactNativePath = Paths.get(nodeModulesPath.toString(), "react-native")
+    if (nodeModulesPath.toFile().exists() && reactNativePath.toFile().exists()) {
+      return nodeModulesPath.toFile()
+    }
+    basePath = basePath.getParent()
+  }
+  throw new GradleException("@kittentts/react-native: Failed to find node_modules.")
+}
+
+static def findOnnxRuntimeRoot(nodeModules, packageRoot) {
+  def candidates = [
+    new File(nodeModules, "onnxruntime-react-native"),
+    new File(packageRoot, "node_modules/onnxruntime-react-native")
+  ]
+
+  def root = candidates.find { new File(it, "android/CMakeLists.txt").exists() }
+  if (root == null) {
+    throw new GradleException(
+      "@kittentts/react-native: onnxruntime-react-native was not found. " +
+      "Run npm install again so the SDK dependency is installed."
+    )
+  }
+  return root
+}
+
+def autolinkedOnnxRuntimeProject = rootProject.findProject(":onnxruntime-react-native")
+def nodeModules = findNodeModules(projectDir)
+def onnxRuntimeRoot = autolinkedOnnxRuntimeProject == null ? findOnnxRuntimeRoot(nodeModules, projectDir.parentFile) : null
+def onnxRuntimeAndroidDir = onnxRuntimeRoot == null ? null : new File(onnxRuntimeRoot, "android")
+
+def readPackageJsonField(field) {
+  def packageJsonFile = new File(rootDir.parentFile, "package.json")
+  if (!packageJsonFile.exists()) {
+    return null
+  }
+  def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonFile.getText("UTF-8"))
+  return packageJson.get(field)
+}
+
+def reactNativeArchitectures() {
+  def value = project.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
+def resolveBuildType() {
+  def taskRequests = gradle.getStartParameter().getTaskRequests()["args"].toString()
+  return taskRequests.contains("Release") ? "release" : "debug"
+}
+
+def REACT_NATIVE_VERSION = [
+  "node",
+  "--print",
+  "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"
+].execute(null, rootDir).text.trim()
+def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
+def ortExtensionsEnabled = readPackageJsonField("onnxruntimeExtensionsEnabled") == "true"
+def useQnn = readPackageJsonField("onnxruntimeUseQnn") == "true"
+
+android {
+  namespace "com.kittentts.reactnative"
+  compileSdkVersion getExtOrDefault("compileSdkVersion", 36)
+
+  defaultConfig {
+    minSdkVersion getExtOrDefault("minSdkVersion", 24)
+    targetSdkVersion getExtOrDefault("targetSdkVersion", 36)
+    if (autolinkedOnnxRuntimeProject == null) {
+      externalNativeBuild {
+        cmake {
+          cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
+          arguments(
+            "-DANDROID_STL=c++_shared",
+            "-DNODE_MODULES_DIR=${nodeModules}",
+            "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}",
+            "-DREACT_NATIVE_VERSION=${REACT_NATIVE_VERSION}",
+            "-DUSE_QNN=${useQnn}",
+            "-DUSE_NNAPI=${!useQnn}",
+            "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
+            "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
+            "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-z,max-page-size=16384"
+          )
+          abiFilters(*reactNativeArchitectures())
+        }
+      }
+    }
+  }
+
+  if (autolinkedOnnxRuntimeProject == null) {
+    buildFeatures {
+      prefab true
+    }
+
+    externalNativeBuild {
+      cmake {
+        path new File(onnxRuntimeAndroidDir, "CMakeLists.txt")
+      }
+    }
+
+    packagingOptions {
+      pickFirst "**/libc++_shared.so"
+      pickFirst "**/libfbjni.so"
+      doNotStrip resolveBuildType() == "debug" ? "**/**/*.so" : ""
+      excludes = [
+        "META-INF",
+        "META-INF/**",
+        "**/libjsi.so",
+        "**/libfbjni.so",
+        "**/libreact_nativemodule_core.so",
+        "**/libturbomodulejsijni.so"
+      ]
+    }
+  }
+
+  sourceSets {
+    main {
+      manifest.srcFile "src/main/AndroidManifest.xml"
+      java.srcDirs = ["src/main/java"]
+      if (autolinkedOnnxRuntimeProject == null) {
+        java.srcDirs += new File(onnxRuntimeAndroidDir, "src/main/java").absolutePath
+        if (ortExtensionsEnabled) {
+          java.exclude "**/OnnxruntimeExtensionsDisabled.java"
+        } else {
+          java.exclude "**/OnnxruntimeExtensionsEnabled.java"
+        }
+      }
+    }
+  }
+
+  if (autolinkedOnnxRuntimeProject == null) {
+    configurations {
+      extractLibs
+    }
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+
+  if (autolinkedOnnxRuntimeProject != null) {
+    implementation autolinkedOnnxRuntimeProject
+  } else {
+    implementation "androidx.annotation:annotation:1.9.1"
+
+    if (useQnn) {
+      extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:latest.integration@aar"
+    } else {
+      extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+    }
+
+    if (REACT_NATIVE_MINOR_VERSION < 71) {
+      extractLibs "com.facebook.fbjni:fbjni:+:headers"
+      extractLibs "com.facebook.fbjni:fbjni:+"
+    }
+
+    if (ortExtensionsEnabled) {
+      implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
+    }
+  }
+}
+
+if (autolinkedOnnxRuntimeProject == null) {
+  task extractOnnxRuntimeLibs {
+    doLast {
+      configurations.extractLibs.files.each {
+        def file = it.absoluteFile
+        copy {
+          from zipTree(file)
+          into new File(onnxRuntimeAndroidDir, "build/${file.name}")
+          include "**/*.h", "**/*.so"
+        }
+      }
+    }
+  }
+
+  def nativeBuildDependsOn = { dependsOnTask, variant ->
+    def buildTasks = tasks.findAll { task ->
+      !task.name.contains("Clean") &&
+        (task.name.contains("externalNative") || task.name.contains("CMake"))
+    }
+    if (variant != null) {
+      buildTasks = buildTasks.findAll { task -> task.name.contains(variant) }
+    }
+    buildTasks.forEach { task -> task.dependsOn(dependsOnTask) }
+  }
+
+  afterEvaluate {
+    nativeBuildDependsOn.call(extractOnnxRuntimeLibs, null)
+  }
+}
+
+def configureOnnxRuntimePageSize = { subproject ->
+  if (subproject.plugins.hasPlugin("com.android.library")) {
+    subproject.android.defaultConfig.externalNativeBuild.cmake.arguments(
+      "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
+      "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
+      "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-z,max-page-size=16384"
+    )
+
+    def configureCmakeTask = subproject.tasks.findByName("kittenTTSConfigureOnnxRuntimePageSize") ?:
+      subproject.tasks.register("kittenTTSConfigureOnnxRuntimePageSize") {
+        doLast {
+          def cmakeFile = new File(subproject.projectDir, "CMakeLists.txt")
+          if (!cmakeFile.exists()) {
+            return
+          }
+
+          def marker = "KittenTTS Android 16 KB page size support"
+          def cmakeText = cmakeFile.getText("UTF-8")
+          if (cmakeText.contains(marker) || !cmakeText.contains("onnxruntimejsi")) {
+            return
+          }
+
+          def targetPropertiesEnd = "POSITION_INDEPENDENT_CODE ON)\n"
+          if (!cmakeText.contains(targetPropertiesEnd)) {
+            return
+          }
+
+          cmakeText = cmakeText.replace(
+            targetPropertiesEnd,
+            targetPropertiesEnd + "\n" +
+              "# ${marker}\n" +
+              "set_property(TARGET onnxruntimejsi APPEND_STRING PROPERTY LINK_FLAGS \" -Wl,-z,max-page-size=16384\")\n"
+          )
+          cmakeFile.write(cmakeText, "UTF-8")
+        }
+      }
+
+    subproject.tasks.matching { task ->
+      task.name.startsWith("configureCMake")
+    }.configureEach { task ->
+      task.dependsOn(configureCmakeTask)
+    }
+  }
+}
+
+rootProject.subprojects { subproject ->
+  if (subproject.name == "onnxruntime-react-native") {
+    if (subproject.state.executed) {
+      configureOnnxRuntimePageSize(subproject)
+    } else {
+      subproject.afterEvaluate {
+        configureOnnxRuntimePageSize(subproject)
+      }
+    }
+  }
+}

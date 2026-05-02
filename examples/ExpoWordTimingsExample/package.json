@@ -1,0 +1,29 @@
+{
+  "name": "expo-word-timings-example",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "android:rebuild": "expo prebuild --clean --platform android && expo run:android",
+    "ios": "expo run:ios",
+    "ios:rebuild": "expo prebuild --clean --platform ios && expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "expo": "~55.0.18",
+    "expo-audio": "~55.0.14",
+    "expo-build-properties": "~55.0.13",
+    "expo-dev-client": "~55.0.28",
+    "expo-status-bar": "~55.0.5",
+    "expo-system-ui": "~55.0.16",
+    "@kittentts/react-native": "file:../../kittentts-react-native-0.8.0.tgz",
+    "react": "19.2.0",
+    "react-native": "0.83.6"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}

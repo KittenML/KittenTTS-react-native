@@ -1,0 +1,89 @@
+{
+  "name": "@kittentts/react-native",
+  "version": "1.1.0",
+  "description": "On-device text-to-speech for React Native, powered by KittenTTS + ONNX Runtime",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "react-native": "./lib/index.js",
+      "require": "./lib/index.js",
+      "default": "./lib/index.js"
+    }
+  },
+  "files": [
+    "lib/",
+    "scripts/patch-onnxruntime-react-native.js",
+    "android/",
+    "react-native.config.js",
+    "docs/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "npm run build:phonemizer && npm run build:ts",
+    "build:ts": "tsc -p tsconfig.json && node scripts/copy-generated.js",
+    "build:test": "tsc -p tsconfig.json",
+    "build:phonemizer": "node scripts/build-cephonemizer.js",
+    "postinstall": "node scripts/patch-onnxruntime-react-native.js",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test",
+    "publish:npm": "npm publish --access public",
+    "test": "npm run build:test && node --test tests/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "npm run typecheck"
+  },
+  "keywords": [
+    "react-native",
+    "tts",
+    "text-to-speech",
+    "speech-synthesis",
+    "on-device",
+    "onnx",
+    "kitten",
+    "ai",
+    "ml"
+  ],
+  "author": "KittenML",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KittenML/kittentts-react-native"
+  },
+  "homepage": "https://github.com/KittenML/kittentts-react-native#readme",
+  "bugs": {
+    "url": "https://github.com/KittenML/kittentts-react-native/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.72.0",
+    "expo-audio": ">=1.0.0",
+    "react-native-sound": ">=0.13.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-audio": {
+      "optional": true
+    },
+    "react-native-sound": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/pako": "^2.0.3",
+    "@types/react": "^18.2.0",
+    "@types/react-native": "^0.72.0",
+    "react": "^18.2.0",
+    "react-native": "^0.73.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "onnxruntime-react-native": "^1.24.3",
+    "react-native-fs": "npm:@dr.pogodin/react-native-fs@^2.38.2",
+    "pako": "^2.1.0"
+  }
+}
