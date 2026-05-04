@@ -9,7 +9,7 @@ import {
 } from '../KittenTTSError';
 import { KittenVoice } from '../KittenVoice';
 import { speedPrior } from '../KittenModel';
-import { OUTPUT_SAMPLE_RATE, type KittenTTSConfig } from '../KittenTTSConfig';
+import { OUTPUT_SAMPLE_RATE, type ResolvedKittenTTSConfig } from '../KittenTTSConfig';
 import { preprocess } from './TextPreprocessor';
 import * as TextCleaner from './TextCleaner';
 import type { VoiceEmbeddings } from '../loader/NPZLoader';
@@ -34,7 +34,7 @@ export class TTSEngine {
   private session: InferenceSession;
   private Tensor: typeof ORTTensor;
   private voices: VoiceEmbeddings;
-  private config: Required<KittenTTSConfig>;
+  private config: ResolvedKittenTTSConfig;
   private waveformOutputName: string | undefined;
   private durationOutputName: string | undefined;
   private disposed = false;
@@ -43,7 +43,7 @@ export class TTSEngine {
     session: InferenceSession,
     TensorCtor: typeof ORTTensor,
     voices: VoiceEmbeddings,
-    config: Required<KittenTTSConfig>,
+    config: ResolvedKittenTTSConfig,
     waveformOutputName: string | undefined,
     durationOutputName: string | undefined,
   ) {
@@ -59,16 +59,19 @@ export class TTSEngine {
    * Create a new TTSEngine by loading the ONNX model and voice embeddings.
    */
   static async create(
-    modelPath: string,
+    model: string | Uint8Array,
     voices: VoiceEmbeddings,
-    config: Required<KittenTTSConfig>,
+    config: ResolvedKittenTTSConfig,
   ): Promise<TTSEngine> {
     try {
       const { InferenceSession, Tensor } = await import('onnxruntime-react-native');
-      const session = await InferenceSession.create(modelPath, {
+      const sessionOptions = {
         graphOptimizationLevel: 'all',
         intraOpNumThreads: config.ortNumThreads,
-      });
+      } as const;
+      const session = typeof model === 'string'
+        ? await InferenceSession.create(model, sessionOptions)
+        : await InferenceSession.create(model, sessionOptions);
       const outputNames = session.outputNames ?? [];
       const waveformOutputName = outputNames.includes('waveform')
         ? 'waveform'
@@ -86,7 +89,7 @@ export class TTSEngine {
       );
     } catch (error) {
       throw KittenTTSError.inferenceFailed(
-        `Could not initialise ONNX Runtime from ${modelPath}: ${errorMessage(error)}`,
+        `Could not initialise ONNX Runtime: ${errorMessage(error)}`,
         error,
       );
     }

@@ -38,6 +38,14 @@ export interface CEPhonemizerOptions {
   rulesURL?: string;
   /** Override the English dictionary list URL. Useful for tests or mirrors. */
   listURL?: string;
+  /** Local English pronunciation rules file. Skips the rules download. */
+  rulesPath?: string;
+  /** Local English dictionary list file. Skips the list download. */
+  listPath?: string;
+  /** English pronunciation rules text. Skips the rules download and file read. */
+  rulesText?: string;
+  /** English dictionary list text. Skips the list download and file read. */
+  listText?: string;
   /** Dialect passed through to the C++ engine, for example `en-us`. */
   dialect?: string;
 }
@@ -64,6 +72,10 @@ export class CEPhonemizer implements KittenPhonemizerProtocol {
 
   private readonly rulesURL: string;
   private readonly listURL: string;
+  private readonly rulesPath?: string;
+  private readonly listPath?: string;
+  private readonly rulesText?: string;
+  private readonly listText?: string;
   private readonly dialect: string;
 
   // Emscripten module and opaque C++ handle. These are created lazily after the
@@ -80,6 +92,10 @@ export class CEPhonemizer implements KittenPhonemizerProtocol {
   constructor(options: CEPhonemizerOptions = {}) {
     this.rulesURL = options.rulesURL ?? DEFAULT_RULES_URL;
     this.listURL = options.listURL ?? DEFAULT_LIST_URL;
+    this.rulesPath = options.rulesPath;
+    this.listPath = options.listPath;
+    this.rulesText = options.rulesText;
+    this.listText = options.listText;
     this.dialect = options.dialect ?? 'en-us';
   }
 
@@ -87,6 +103,13 @@ export class CEPhonemizer implements KittenPhonemizerProtocol {
     storageDirectory: string,
     progressHandler?: ProgressHandler,
   ): Promise<void> {
+    if (this.hasBundledText() || this.hasBundledPaths()) {
+      await this.loadBundled(progressHandler);
+      return;
+    }
+
+    this.assertNoPartialBundledData();
+
     // Store the dictionary next to the model cache by default. Keeping it under
     // KittenTTS makes it safe for apps to clear all SDK-managed assets together.
     const base = storageDirectory || `${RNFS.DocumentDirectoryPath}/KittenTTS`;
@@ -215,6 +238,76 @@ export class CEPhonemizer implements KittenPhonemizerProtocol {
     this.phonemizeHandle = phonemizeHandle;
     this.freeString = freeString;
   }
+
+  private hasBundledText(): boolean {
+    return this.rulesText !== undefined || this.listText !== undefined;
+  }
+
+  private hasBundledPaths(): boolean {
+    return this.rulesPath !== undefined || this.listPath !== undefined;
+  }
+
+  private assertNoPartialBundledData(): void {
+    if (this.rulesText !== undefined || this.listText !== undefined) {
+      if (this.rulesText === undefined || this.listText === undefined) {
+        throw KittenTTSError.phonemizerFailed(
+          'Both rulesText and listText must be provided for bundled CEPhonemizer data.',
+        );
+      }
+    }
+
+    if (this.rulesPath !== undefined || this.listPath !== undefined) {
+      if (this.rulesPath === undefined || this.listPath === undefined) {
+        throw KittenTTSError.phonemizerFailed(
+          'Both rulesPath and listPath must be provided for bundled CEPhonemizer data.',
+        );
+      }
+    }
+  }
+
+  private async loadBundled(progressHandler?: ProgressHandler): Promise<void> {
+    this.assertNoPartialBundledData();
+
+    try {
+      progressHandler?.(0, { stage: 'checking-cache', cached: false });
+
+      if (this.rulesText !== undefined && this.listText !== undefined) {
+        await this.load(this.rulesText, this.listText);
+        progressHandler?.(1, { stage: 'complete', cached: true });
+        return;
+      }
+
+      if (!this.rulesPath || !this.listPath) {
+        throw KittenTTSError.phonemizerFailed(
+          'Bundled CEPhonemizer data must provide text or file paths.',
+        );
+      }
+
+      const rulesPath = stripFileScheme(this.rulesPath);
+      const listPath = stripFileScheme(this.listPath);
+      const [rulesExists, listExists] = await Promise.all([
+        RNFS.exists(rulesPath),
+        RNFS.exists(listPath),
+      ]);
+
+      if (!rulesExists) {
+        throw KittenTTSError.phonemizerFailed(`Rules file not found: ${rulesPath}`);
+      }
+      if (!listExists) {
+        throw KittenTTSError.phonemizerFailed(`List file not found: ${listPath}`);
+      }
+
+      const [rules, list] = await Promise.all([
+        RNFS.readFile(rulesPath, 'utf8'),
+        RNFS.readFile(listPath, 'utf8'),
+      ]);
+      await this.load(rules, list);
+      progressHandler?.(1, { stage: 'complete', cached: true });
+    } catch (error) {
+      if (isKittenTTSError(error)) throw error;
+      throw KittenTTSError.phonemizerFailed(errorMessage(error), error);
+    }
+  }
 }
 
 async function downloadFile(
@@ -327,6 +420,10 @@ async function downloadFileOnce(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function stripFileScheme(filePath: string): string {
+  return filePath.startsWith('file://') ? filePath.slice('file://'.length) : filePath;
 }
 
 function createAggregateProgress(

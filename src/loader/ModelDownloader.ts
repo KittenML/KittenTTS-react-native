@@ -43,12 +43,19 @@ export type ProgressHandler = (
 
 /** Resolved paths to the cached model files. */
 export interface ModelPaths {
+  onnxPath?: string;
+  voicesPath?: string;
+  onnxData?: Uint8Array;
+  voicesData?: Uint8Array;
+}
+
+export interface FileModelPaths {
   onnxPath: string;
   voicesPath: string;
 }
 
 /** Detailed model cache status for app first-run UI. */
-export interface ModelCacheInfo extends ModelPaths {
+export interface ModelCacheInfo extends FileModelPaths {
   model: KittenModel;
   directory: string;
   onnxExists: boolean;
@@ -64,6 +71,11 @@ export interface ModelDownloadOptions {
   retries?: number;
   /** Override the model file host. Must point at a directory containing the model files. */
   baseURL?: string;
+}
+
+export interface ModelResolveOptions extends ModelDownloadOptions {
+  /** Local model files to use instead of downloading/cache lookup. */
+  modelFiles?: ModelPaths;
 }
 
 const activeDownloads = new Map<string, Promise<ModelPaths>>();
@@ -106,6 +118,65 @@ export async function getModelCacheInfo(
     voicesExists,
     isCached: onnxExists && voicesExists,
   };
+}
+
+/**
+ * Returns detailed availability state for user-supplied model files.
+ */
+export async function getProvidedModelCacheInfo(
+  model: KittenModel,
+  files: ModelPaths,
+): Promise<ModelCacheInfo> {
+  if (files.onnxData || files.voicesData) {
+    return {
+      model,
+      directory: '',
+      onnxPath: files.onnxPath ?? '<provided model data>',
+      voicesPath: files.voicesPath ?? '<provided voices data>',
+      onnxExists: Boolean(files.onnxData || files.onnxPath),
+      voicesExists: Boolean(files.voicesData || files.voicesPath),
+      isCached: Boolean((files.onnxData || files.onnxPath) && (files.voicesData || files.voicesPath)),
+    };
+  }
+
+  const paths = normalizeModelPaths(files);
+  if (!paths.onnxPath) throw KittenTTSError.modelFileNotFound('<missing model path>');
+  if (!paths.voicesPath) throw KittenTTSError.voicesFileNotFound('<missing voices path>');
+  const [onnxExists, voicesExists] = await Promise.all([
+    RNFS.exists(paths.onnxPath),
+    RNFS.exists(paths.voicesPath),
+  ]);
+  return {
+    model,
+    directory: commonDirectory(paths.onnxPath, paths.voicesPath),
+    onnxPath: paths.onnxPath,
+    voicesPath: paths.voicesPath,
+    onnxExists,
+    voicesExists,
+    isCached: onnxExists && voicesExists,
+  };
+}
+
+/**
+ * Resolve usable model paths from either supplied local files or the download
+ * cache. Supplying `modelFiles` skips all network and cache writes.
+ */
+export async function resolveModelPaths(
+  model: KittenModel,
+  storageDir: string,
+  progressHandler?: ProgressHandler,
+  options: ModelResolveOptions = {},
+): Promise<ModelPaths> {
+  if (options.modelFiles) {
+    progressHandler?.(0, { stage: 'checking-cache', cached: false });
+    const info = await getProvidedModelCacheInfo(model, options.modelFiles);
+    if (!info.onnxExists) throw KittenTTSError.modelFileNotFound(info.onnxPath);
+    if (!info.voicesExists) throw KittenTTSError.voicesFileNotFound(info.voicesPath);
+    progressHandler?.(1, { stage: 'cached', cached: true });
+    return normalizeModelPaths(options.modelFiles);
+  }
+
+  return downloadModelIfNeeded(model, storageDir, progressHandler, options);
 }
 
 /**
@@ -235,6 +306,29 @@ export async function clearModelCache(
 function resolveDir(model: KittenModel, storageDir: string): string {
   const base = storageDir || `${RNFS.DocumentDirectoryPath}/KittenTTS`;
   return `${base}/${model}`;
+}
+
+function normalizeModelPaths(files: ModelPaths): ModelPaths {
+  return {
+    onnxPath: files.onnxPath ? stripFileScheme(files.onnxPath) : undefined,
+    voicesPath: files.voicesPath ? stripFileScheme(files.voicesPath) : undefined,
+    onnxData: files.onnxData,
+    voicesData: files.voicesData,
+  };
+}
+
+function stripFileScheme(filePath: string): string {
+  return filePath.startsWith('file://') ? filePath.slice('file://'.length) : filePath;
+}
+
+function commonDirectory(firstPath: string, secondPath: string): string {
+  const firstDir = dirname(firstPath);
+  return firstDir === dirname(secondPath) ? firstDir : '';
+}
+
+function dirname(filePath: string): string {
+  const index = filePath.lastIndexOf('/');
+  return index > 0 ? filePath.slice(0, index) : '';
 }
 
 async function downloadFile(
