@@ -10,10 +10,18 @@
       "react-native": "./lib/index.js",
       "require": "./lib/index.js",
       "default": "./lib/index.js"
-    }
+    },
+    "./app.plugin": "./app.plugin.js",
+    "./app.plugin.js": "./app.plugin.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "kittentts-react-native": "bin/kittentts-react-native.js"
   },
   "files": [
     "lib/",
+    "bin/",
+    "app.plugin.js",
     "scripts/patch-onnxruntime-react-native.js",
     "android/",
     "react-native.config.js",

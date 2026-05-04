@@ -3,6 +3,13 @@ import { KittenModel } from './KittenModel';
 import { KittenVoice } from './KittenVoice';
 import { CEPhonemizer } from './phonemizer/CEPhonemizer';
 import type { KittenPhonemizerProtocol } from './phonemizer/types';
+import type { ModelPaths } from './loader/ModelDownloader';
+
+export type KittenTTSModelFiles = ModelPaths;
+
+export type ResolvedKittenTTSConfig =
+  Required<Omit<KittenTTSConfig, 'modelFiles'>> &
+  Pick<KittenTTSConfig, 'modelFiles'>;
 
 /**
  * Configuration for a {@link KittenTTS} session.
@@ -39,6 +46,12 @@ export interface KittenTTSConfig {
    */
   modelBaseURL?: string;
 
+  /**
+   * Local ONNX model and voices.npz paths. When provided, KittenTTS uses these
+   * files directly and skips model downloads/cache lookup.
+   */
+  modelFiles?: KittenTTSModelFiles;
+
   /** Total download attempts per model file before failing. Defaults to 4. */
   downloadRetries?: number;
 
@@ -69,13 +82,14 @@ function defaultPhonemizer(): KittenPhonemizerProtocol {
 }
 
 /** Resolve config with defaults applied. */
-export function resolveConfig(config?: KittenTTSConfig): Required<KittenTTSConfig> {
+export function resolveConfig(config?: KittenTTSConfig): ResolvedKittenTTSConfig {
   return {
     model: config?.model ?? KittenModel.Nano,
     defaultVoice: config?.defaultVoice ?? KittenVoice.Bella,
     speed: Math.min(Math.max(config?.speed ?? 1.0, 0.5), 2.0),
     storageDirectory: config?.storageDirectory ?? `${RNFS.DocumentDirectoryPath}/KittenTTS`,
     modelBaseURL: config?.modelBaseURL ?? '',
+    modelFiles: config?.modelFiles,
     downloadRetries: Math.max(1, Math.floor(config?.downloadRetries ?? 4)),
     ortNumThreads: Math.max(1, config?.ortNumThreads ?? 4),
     maxTokensPerChunk: Math.max(50, config?.maxTokensPerChunk ?? 400),

@@ -10,11 +10,17 @@ ios/build/
 DerivedData/
 
 # Example native build outputs
+examples/*/.expo/
 examples/*/android/.gradle/
 examples/*/android/build/
 examples/*/android/app/build/
 examples/*/ios/Pods/
 examples/*/ios/build/
+examples/Expo*/android/
+examples/Expo*/ios/
+examples/OfflineBundledAssetsExample/android/
+examples/OfflineBundledAssetsExample/ios/
+examples/OfflineBundledAssetsExample/assets/kittentts/
 
 # Logs and caches
 lib/

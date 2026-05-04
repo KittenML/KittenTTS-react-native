@@ -1,6 +1,7 @@
 import {
   KittenTTSConfig,
   OUTPUT_SAMPLE_RATE,
+  type ResolvedKittenTTSConfig,
   resolveConfig,
 } from './KittenTTSConfig';
 import {
@@ -15,15 +16,16 @@ import type { KittenWordTiming } from './KittenWordTiming';
 import { TTSEngine } from './engine/TTSEngine';
 import { splitSentences } from './engine/SentenceSplitter';
 import { joinTimestamps } from './engine/TimestampJoiner';
-import { loadNPZ } from './loader/NPZLoader';
+import { loadNPZ, loadNPZData } from './loader/NPZLoader';
 import {
   clearModelCache as deleteCachedModel,
-  downloadModelIfNeeded,
   getModelCacheInfo,
+  getProvidedModelCacheInfo,
   isModelCached as checkModelCached,
   type ModelCacheInfo,
   type ModelPaths,
   type ProgressHandler,
+  resolveModelPaths,
 } from './loader/ModelDownloader';
 import {
   AudioOutput,
@@ -83,7 +85,7 @@ export interface KittenTTSCreateOptions extends KittenTTSConfig {
  */
 export class KittenTTS {
   /** The configuration this instance was created with. */
-  readonly config: Required<KittenTTSConfig>;
+  readonly config: ResolvedKittenTTSConfig;
 
   private engine: TTSEngine;
   private audioOutput: AudioOutput;
@@ -92,7 +94,7 @@ export class KittenTTS {
 
   private constructor(
     engine: TTSEngine,
-    config: Required<KittenTTSConfig>,
+    config: ResolvedKittenTTSConfig,
     player?: AudioPlayer,
   ) {
     this.engine = engine;
@@ -126,11 +128,12 @@ export class KittenTTS {
       )
       : Promise.resolve();
 
-    const modelDownload = downloadModelIfNeeded(
+    const modelDownload = resolveModelPaths(
       resolved.model,
       resolved.storageDirectory,
       setupProgress,
       {
+        modelFiles: resolved.modelFiles,
         force: options?.forceRedownload ?? false,
         retries: resolved.downloadRetries,
         baseURL: resolved.modelBaseURL || undefined,
@@ -146,7 +149,7 @@ export class KittenTTS {
     let paths = downloadedPaths;
     const repairCache = async (): Promise<ModelPaths> => {
       await deleteCachedModel(resolved.model, resolved.storageDirectory);
-      return downloadModelIfNeeded(
+      return resolveModelPaths(
         resolved.model,
         resolved.storageDirectory,
         setupProgress,
@@ -158,15 +161,17 @@ export class KittenTTS {
       );
     };
 
-    let voices = await loadVoicesWithCacheRepair(paths.voicesPath, repairCache);
+    let voices = resolved.modelFiles
+      ? await loadVoicesFromModelPaths(paths)
+      : await loadVoicesWithCacheRepair(requireVoicesPath(paths), repairCache);
     let engine: TTSEngine;
     try {
-      engine = await TTSEngine.create(paths.onnxPath, voices, resolved);
+      engine = await TTSEngine.create(resolveOnnxModelSource(paths), voices, resolved);
     } catch (error) {
-      if (!isRepairableModelCacheError(error)) throw error;
+      if (resolved.modelFiles || !isRepairableModelCacheError(error)) throw error;
       paths = await repairCache();
-      voices = await loadNPZ(paths.voicesPath);
-      engine = await TTSEngine.create(paths.onnxPath, voices, resolved);
+      voices = await loadNPZ(requireVoicesPath(paths));
+      engine = await TTSEngine.create(resolveOnnxModelSource(paths), voices, resolved);
     }
 
     return new KittenTTS(engine, resolved, options?.player);
@@ -280,6 +285,12 @@ export class KittenTTS {
   /** Check if the model files are already cached on disk. */
   static async isModelCached(config?: KittenTTSConfig): Promise<boolean> {
     const resolved = resolveConfig(config);
+    if (resolved.modelFiles) {
+      return (await getProvidedModelCacheInfo(
+        resolved.model,
+        resolved.modelFiles,
+      )).isCached;
+    }
     return checkModelCached(resolved.model, resolved.storageDirectory);
   }
 
@@ -288,6 +299,9 @@ export class KittenTTS {
     config?: KittenTTSConfig,
   ): Promise<ModelCacheInfo> {
     const resolved = resolveConfig(config);
+    if (resolved.modelFiles) {
+      return getProvidedModelCacheInfo(resolved.model, resolved.modelFiles);
+    }
     return getModelCacheInfo(resolved.model, resolved.storageDirectory);
   }
 
@@ -299,6 +313,7 @@ export class KittenTTS {
   /** Delete cached files for the selected model. */
   static async clearModelCache(config?: KittenTTSConfig): Promise<void> {
     const resolved = resolveConfig(config);
+    if (resolved.modelFiles) return;
     await deleteCachedModel(resolved.model, resolved.storageDirectory);
   }
 
@@ -308,8 +323,17 @@ export class KittenTTS {
     onProgress?: ProgressHandler,
   ): Promise<void> {
     const resolved = resolveConfig(config);
+    if (resolved.modelFiles) {
+      await resolveModelPaths(
+        resolved.model,
+        resolved.storageDirectory,
+        onProgress,
+        { modelFiles: resolved.modelFiles },
+      );
+      return;
+    }
     await deleteCachedModel(resolved.model, resolved.storageDirectory);
-    await downloadModelIfNeeded(
+    await resolveModelPaths(
       resolved.model,
       resolved.storageDirectory,
       onProgress,
@@ -338,11 +362,12 @@ export class KittenTTS {
       )
       : Promise.resolve();
 
-    const modelDownload = downloadModelIfNeeded(
+    const modelDownload = resolveModelPaths(
       resolved.model,
       resolved.storageDirectory,
       setupProgress,
       {
+        modelFiles: resolved.modelFiles,
         retries: resolved.downloadRetries,
         baseURL: resolved.modelBaseURL || undefined,
       },
@@ -394,6 +419,25 @@ function clampTime(value: number, audioDuration: number): number {
   return Math.max(0, Math.min(audioDuration, value));
 }
 
+function resolveOnnxModelSource(paths: ModelPaths): string | Uint8Array {
+  if (paths.onnxData) return paths.onnxData;
+  if (paths.onnxPath) return paths.onnxPath;
+  throw KittenTTSError.modelFileNotFound('<missing model path>');
+}
+
+function requireVoicesPath(paths: ModelPaths): string {
+  if (paths.voicesPath) return paths.voicesPath;
+  throw KittenTTSError.voicesFileNotFound('<missing voices path>');
+}
+
+async function loadVoicesFromModelPaths(
+  paths: ModelPaths,
+): Promise<Awaited<ReturnType<typeof loadNPZ>>> {
+  if (paths.voicesData) return loadNPZData(paths.voicesData);
+  if (paths.voicesPath) return loadNPZ(paths.voicesPath);
+  throw KittenTTSError.voicesFileNotFound('<missing voices path>');
+}
+
 async function loadVoicesWithCacheRepair(
   voicesPath: string,
   repairCache: () => Promise<ModelPaths>,
@@ -403,7 +447,7 @@ async function loadVoicesWithCacheRepair(
   } catch (error) {
     if (!isRepairableModelCacheError(error)) throw error;
     const repairedPaths = await repairCache();
-    return loadNPZ(repairedPaths.voicesPath);
+    return loadNPZ(requireVoicesPath(repairedPaths));
   }
 }
 

@@ -34,14 +34,7 @@ export async function loadNPZ(filePath: string): Promise<VoiceEmbeddings> {
     }
 
     const base64 = await RNFS.readFile(filePath, 'base64');
-    const data = base64ToUint8Array(base64);
-    const embeddings = parseZIP(data);
-    if (Object.keys(embeddings).length === 0) {
-      throw KittenTTSError.invalidModelData(
-        `No voice embeddings were found in ${filePath}`,
-      );
-    }
-    return embeddings;
+    return loadNPZData(base64ToUint8Array(base64), filePath);
   } catch (error) {
     if (isKittenTTSError(error)) {
       throw error;
@@ -51,6 +44,19 @@ export async function loadNPZ(filePath: string): Promise<VoiceEmbeddings> {
       error,
     );
   }
+}
+
+export function loadNPZData(
+  data: Uint8Array,
+  source = 'provided voice data',
+): VoiceEmbeddings {
+  const embeddings = parseZIP(data);
+  if (Object.keys(embeddings).length === 0) {
+    throw KittenTTSError.invalidModelData(
+      `No voice embeddings were found in ${source}`,
+    );
+  }
+  return embeddings;
 }
 
 // ---------------------------------------------------------------------------

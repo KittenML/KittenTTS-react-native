@@ -1,0 +1,31 @@
+{
+  "name": "offlinebundledassetsexample",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "bundle:kittentts": "kittentts-react-native bundle-assets --models nano-int8 --out assets/kittentts",
+    "bundle:kittentts:all": "kittentts-react-native bundle-assets --all --out assets/kittentts",
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "android:rebuild": "expo prebuild --clean --platform android && expo run:android",
+    "ios": "expo run:ios",
+    "ios:rebuild": "expo prebuild --clean --platform ios && expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@kittentts/react-native": "^1.1.0",
+    "expo": "~54.0.33",
+    "expo-audio": "~1.1.1",
+    "expo-build-properties": "~1.0.10",
+    "expo-dev-client": "~6.0.21",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-fs": "npm:@dr.pogodin/react-native-fs@^2.38.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
