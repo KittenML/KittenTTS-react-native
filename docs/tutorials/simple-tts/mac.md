@@ -1,8 +1,7 @@
-# Simple Text-To-Speech On macOS
+# Simple TTS App On macOS
 
-This tutorial takes you from an empty app to a working on-device TTS screen.
-It is written for someone who has used React Native only a little, or not at
-all.
+This is the long version of the quick start. It starts from an empty app and
+ends with a small screen that speaks whatever you type.
 
 KittenTTS runs the model on the phone or simulator. It does not call a cloud
 TTS API and it does not need an API key.

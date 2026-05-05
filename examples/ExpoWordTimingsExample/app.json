@@ -22,7 +22,13 @@
         "backgroundColor": "#ffffff"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.kittentts.expowordtimings"
+      "package": "com.kittentts.expowordtimings",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,6 +36,11 @@
     "plugins": [
       "expo-audio",
       "expo-build-properties"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "41e9b771-3222-40c2-a12b-01d0acac75fa"
+      }
+    }
   }
 }

@@ -1,8 +1,9 @@
-# EPUB Reader Tutorial On macOS
+# Reader App Tutorial On macOS
 
-This tutorial shows how to add KittenTTS to a reader app on macOS. The same
-pattern works for EPUB readers, article readers, accessibility readers, study
-apps, and "read aloud" modes.
+This guide shows the read-aloud pattern: prepare the model once, split long
+text into chunks, stream generated audio, and highlight words as they play. The
+same approach works for EPUB readers, article apps, study tools, and
+accessibility features.
 
 KittenTTS does not parse EPUB files. Your app should extract plain text from the
 book first, then give that plain text to KittenTTS.
