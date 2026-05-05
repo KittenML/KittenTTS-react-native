@@ -25,6 +25,7 @@
     "scripts/patch-onnxruntime-react-native.js",
     "android/",
     "react-native.config.js",
+    "assets/",
     "docs/",
     "README.md",
     "CHANGELOG.md",

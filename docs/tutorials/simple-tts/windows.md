@@ -1,7 +1,7 @@
-# Simple Text-To-Speech On Windows
+# Simple TTS App On Windows
 
-This tutorial creates a small Android app that speaks text with KittenTTS. It is
-written for beginners and assumes you are building Android from Windows.
+This is the long version of the quick start for Windows. It builds a small
+Android app with a text box, a Speak button, and on-device speech generation.
 
 iOS builds require macOS, so this guide focuses on Android.
 

@@ -1,8 +1,8 @@
-# EPUB Reader Tutorial On Windows
+# Reader App Tutorial On Windows
 
-This tutorial shows how to add KittenTTS to an Android reader app on Windows.
-It is beginner-friendly and focuses on the full path: setup, model download,
-streaming generation, word highlighting, and APK output.
+This guide shows the read-aloud pattern on Windows: prepare the model once,
+split long text into chunks, stream generated audio, and highlight words as
+they play. It focuses on Android because iOS builds require macOS.
 
 KittenTTS does not parse EPUB files. Use an EPUB parser to extract plain chapter
 text, then pass that plain text to KittenTTS.
