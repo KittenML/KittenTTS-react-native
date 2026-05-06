@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+analytics-worker/node_modules/
+analytics-worker/dist/
 
 # Native build outputs
 android/.gradle/
@@ -36,6 +38,7 @@ coverage/
 *.tsbuildinfo
 *.d.ts.map
 *.ts.map
+analytics-worker/.wrangler/
 
 # Environment
 .env

@@ -12,6 +12,14 @@ export { KittenModel, modelDisplayName, approximateDownloadBytes } from './Kitte
 export { KittenVoice, ALL_VOICES, voiceDisplayName, isFemaleVoice } from './KittenVoice';
 export { OUTPUT_SAMPLE_RATE } from './KittenTTSConfig';
 export type { KittenTTSConfig, KittenTTSModelFiles } from './KittenTTSConfig';
+export { KITTENTTS_SDK_VERSION } from './analytics/SDKVersion';
+export type {
+  KittenTTSAnalyticsAssetSource,
+  KittenTTSAnalyticsConfig,
+  KittenTTSAnalyticsOptions,
+  KittenTTSAnalyticsPlaybackHelper,
+  KittenTTSAnalyticsRuntime,
+} from './analytics/Analytics';
 export { bundledAssetModels, createBundledAssetConfig } from './KittenTTSBundledAssets';
 export type {
   CreateBundledAssetConfigOptions,

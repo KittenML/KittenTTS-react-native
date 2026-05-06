@@ -32,6 +32,13 @@ import {
   type AudioPlayer,
   type AudioPlayOptions,
 } from './audio/AudioOutput';
+import {
+  KittenTTSAnalyticsClient,
+  configureGlobalAnalytics,
+  type KittenTTSAnalyticsAssetSource,
+  type KittenTTSAnalyticsConfig,
+  type KittenTTSAnalyticsPlaybackHelper,
+} from './analytics/Analytics';
 
 /** Options for {@link KittenTTS.create}. */
 export interface KittenTTSCreateOptions extends KittenTTSConfig {
@@ -89,17 +96,25 @@ export class KittenTTS {
 
   private engine: TTSEngine;
   private audioOutput: AudioOutput;
+  private analytics: KittenTTSAnalyticsClient;
   private disposed = false;
   private disposePromise: Promise<void> | null = null;
 
   private constructor(
     engine: TTSEngine,
     config: ResolvedKittenTTSConfig,
+    analytics: KittenTTSAnalyticsClient,
     player?: AudioPlayer,
   ) {
     this.engine = engine;
     this.config = config;
+    this.analytics = analytics;
     this.audioOutput = new AudioOutput(player);
+  }
+
+  /** Configure SDK analytics globally for future `KittenTTS.create()` calls. */
+  static configureAnalytics(options: KittenTTSAnalyticsConfig): void {
+    configureGlobalAnalytics(options);
   }
 
   /**
@@ -117,9 +132,24 @@ export class KittenTTS {
     onProgress?: ProgressHandler,
   ): Promise<KittenTTS> {
     const resolved = resolveConfig(options);
+    const assetSource: KittenTTSAnalyticsAssetSource = resolved.modelFiles
+      ? 'bundled'
+      : 'runtime-download';
+    const playbackHelper = resolvePlaybackHelper(options?.player);
+    const analytics = new KittenTTSAnalyticsClient({
+      analytics: resolved.analytics,
+      storageDirectory: resolved.storageDirectory,
+      model: resolved.model,
+      defaultVoice: resolved.defaultVoice,
+      playbackHelper,
+      assetSource,
+    });
     const hasPhonemizerDownload =
       typeof resolved.phonemizer.downloadIfNeeded === 'function';
     const setupProgress = createAggregateProgress(onProgress);
+    const modelCacheHit = resolved.modelFiles || options?.forceRedownload
+      ? false
+      : await checkModelCached(resolved.model, resolved.storageDirectory);
 
     const phonemizerDownload = hasPhonemizerDownload
       ? resolved.phonemizer.downloadIfNeeded?.(
@@ -138,7 +168,21 @@ export class KittenTTS {
         retries: resolved.downloadRetries,
         baseURL: resolved.modelBaseURL || undefined,
       },
-    );
+    )
+      .then((paths) => {
+        analytics.track('model_download_succeeded', {
+          assetSource: modelCacheHit ? 'cache' : assetSource,
+          cacheHit: modelCacheHit,
+        });
+        return paths;
+      })
+      .catch((error) => {
+        analytics.track('model_download_failed', {
+          assetSource,
+          errorCode: analyticsErrorCode(error),
+        });
+        throw error;
+      });
 
     const [, downloadedPaths] = await Promise.all([
       phonemizerDownload,
@@ -174,7 +218,12 @@ export class KittenTTS {
       engine = await TTSEngine.create(resolveOnnxModelSource(paths), voices, resolved);
     }
 
-    return new KittenTTS(engine, resolved, options?.player);
+    analytics.track('sdk_initialized', {
+      assetSource: modelCacheHit ? 'cache' : assetSource,
+      cacheHit: modelCacheHit,
+    });
+
+    return new KittenTTS(engine, resolved, analytics, options?.player);
   }
 
   /**
@@ -198,18 +247,27 @@ export class KittenTTS {
     const selectedVoice = voice ?? this.config.defaultVoice;
     const selectedSpeed = Math.min(Math.max(speed ?? this.config.speed, 0.5), 2.0);
 
-    const output = await this.engine.generate(
-      trimmed,
-      selectedVoice,
-      selectedSpeed,
-    );
+    let output: Awaited<ReturnType<TTSEngine['generate']>>;
+    try {
+      output = await this.engine.generate(
+        trimmed,
+        selectedVoice,
+        selectedSpeed,
+      );
+    } catch (error) {
+      this.analytics.track('inference_failed', {
+        voice: selectedVoice,
+        errorCode: analyticsErrorCode(error),
+      });
+      throw error;
+    }
     const effectiveSpeed = selectedSpeed * speedPrior(this.config.model, selectedVoice);
     const wordTimings = normalizeWordTimingsToDuration(
       joinTimestamps(trimmed, output.phonemes, output.durations),
       output.samples.length / OUTPUT_SAMPLE_RATE,
     );
 
-    return new KittenTTSResult(
+    const result = new KittenTTSResult(
       output.samples,
       OUTPUT_SAMPLE_RATE,
       selectedVoice,
@@ -217,6 +275,8 @@ export class KittenTTS {
       trimmed,
       wordTimings,
     );
+    this.analytics.track('inference_succeeded', { voice: selectedVoice });
+    return result;
   }
 
   /**
@@ -274,7 +334,20 @@ export class KittenTTS {
     options: AudioPlayOptions = {},
   ): Promise<void> {
     if (this.disposed) throw KittenTTSError.engineNotReady();
-    await this.audioOutput.play(result.samples, result.sampleRate, options);
+    try {
+      await this.audioOutput.play(result.samples, result.sampleRate, options);
+    } catch (error) {
+      this.analytics.track('playback_failed', {
+        voice: result.voice,
+        playbackHelper: this.audioOutput.getPlaybackHelper(),
+        errorCode: analyticsErrorCode(error),
+      });
+      throw error;
+    }
+    this.analytics.track('voice_played', {
+      voice: result.voice,
+      playbackHelper: this.audioOutput.getPlaybackHelper(),
+    });
   }
 
   /** Stop any currently active audio playback. */
@@ -323,26 +396,54 @@ export class KittenTTS {
     onProgress?: ProgressHandler,
   ): Promise<void> {
     const resolved = resolveConfig(config);
+    const analytics = createAnalyticsClientForConfig(resolved, {
+      assetSource: resolved.modelFiles ? 'bundled' : 'runtime-download',
+      playbackHelper: 'none',
+    });
     if (resolved.modelFiles) {
+      try {
+        await resolveModelPaths(
+          resolved.model,
+          resolved.storageDirectory,
+          onProgress,
+          { modelFiles: resolved.modelFiles },
+        );
+        analytics.track('model_download_succeeded', {
+          assetSource: 'bundled',
+          cacheHit: false,
+        });
+      } catch (error) {
+        analytics.track('model_download_failed', {
+          assetSource: 'bundled',
+          errorCode: analyticsErrorCode(error),
+        });
+        throw error;
+      }
+      return;
+    }
+    await deleteCachedModel(resolved.model, resolved.storageDirectory);
+    try {
       await resolveModelPaths(
         resolved.model,
         resolved.storageDirectory,
         onProgress,
-        { modelFiles: resolved.modelFiles },
+        {
+          force: true,
+          retries: resolved.downloadRetries,
+          baseURL: resolved.modelBaseURL || undefined,
+        },
       );
-      return;
+      analytics.track('model_download_succeeded', {
+        assetSource: 'runtime-download',
+        cacheHit: false,
+      });
+    } catch (error) {
+      analytics.track('model_download_failed', {
+        assetSource: 'runtime-download',
+        errorCode: analyticsErrorCode(error),
+      });
+      throw error;
     }
-    await deleteCachedModel(resolved.model, resolved.storageDirectory);
-    await resolveModelPaths(
-      resolved.model,
-      resolved.storageDirectory,
-      onProgress,
-      {
-        force: true,
-        retries: resolved.downloadRetries,
-        baseURL: resolved.modelBaseURL || undefined,
-      },
-    );
   }
 
   /** Download model and phonemizer assets without creating a long-lived engine. */
@@ -351,9 +452,19 @@ export class KittenTTS {
     onProgress?: ProgressHandler,
   ): Promise<void> {
     const resolved = resolveConfig(config);
+    const assetSource: KittenTTSAnalyticsAssetSource = resolved.modelFiles
+      ? 'bundled'
+      : 'runtime-download';
+    const analytics = createAnalyticsClientForConfig(resolved, {
+      assetSource,
+      playbackHelper: 'none',
+    });
     const hasPhonemizerDownload =
       typeof resolved.phonemizer.downloadIfNeeded === 'function';
     const setupProgress = createAggregateProgress(onProgress);
+    const modelCacheHit = resolved.modelFiles
+      ? false
+      : await checkModelCached(resolved.model, resolved.storageDirectory);
 
     const phonemizerDownload = hasPhonemizerDownload
       ? resolved.phonemizer.downloadIfNeeded?.(
@@ -371,7 +482,20 @@ export class KittenTTS {
         retries: resolved.downloadRetries,
         baseURL: resolved.modelBaseURL || undefined,
       },
-    );
+    )
+      .then(() => {
+        analytics.track('model_download_succeeded', {
+          assetSource: modelCacheHit ? 'cache' : assetSource,
+          cacheHit: modelCacheHit,
+        });
+      })
+      .catch((error) => {
+        analytics.track('model_download_failed', {
+          assetSource,
+          errorCode: analyticsErrorCode(error),
+        });
+        throw error;
+      });
 
     await Promise.all([phonemizerDownload, modelDownload]);
     setupProgress(1, { stage: 'complete' });
@@ -396,6 +520,35 @@ export class KittenTTS {
     })();
     return this.disposePromise;
   }
+}
+
+function resolvePlaybackHelper(
+  player?: AudioPlayer,
+): KittenTTSAnalyticsPlaybackHelper {
+  if (!player) return 'none';
+  return player.kittenTTSPlaybackHelper ?? 'custom';
+}
+
+function createAnalyticsClientForConfig(
+  config: ResolvedKittenTTSConfig,
+  options: {
+    playbackHelper: KittenTTSAnalyticsPlaybackHelper;
+    assetSource: KittenTTSAnalyticsAssetSource;
+  },
+): KittenTTSAnalyticsClient {
+  return new KittenTTSAnalyticsClient({
+    analytics: config.analytics,
+    storageDirectory: config.storageDirectory,
+    model: config.model,
+    defaultVoice: config.defaultVoice,
+    playbackHelper: options.playbackHelper,
+    assetSource: options.assetSource,
+  });
+}
+
+function analyticsErrorCode(error: unknown): string {
+  if (isKittenTTSError(error)) return error.code;
+  return 'UNKNOWN';
 }
 
 function normalizeWordTimingsToDuration(

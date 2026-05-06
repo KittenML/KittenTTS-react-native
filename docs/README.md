@@ -15,6 +15,7 @@ feature you need.
 - [Playback](guides/playback.md) - Expo Audio, React Native Sound, and custom players.
 - [Bundled offline assets](guides/offline-assets.md) - ship models inside the app.
 - [Word timings](guides/word-timings.md) - highlight words while audio plays.
+- [Analytics](guides/analytics.md) - anonymous SDK analytics and opt-out controls.
 
 ## Reference
 

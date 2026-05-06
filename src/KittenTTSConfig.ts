@@ -4,12 +4,30 @@ import { KittenVoice } from './KittenVoice';
 import { CEPhonemizer } from './phonemizer/CEPhonemizer';
 import type { KittenPhonemizerProtocol } from './phonemizer/types';
 import type { ModelPaths } from './loader/ModelDownloader';
+import {
+  resolveAnalyticsOptions,
+  type KittenTTSAnalyticsConfig,
+  type ResolvedKittenTTSAnalyticsOptions,
+} from './analytics/Analytics';
 
 export type KittenTTSModelFiles = ModelPaths;
 
-export type ResolvedKittenTTSConfig =
-  Required<Omit<KittenTTSConfig, 'modelFiles'>> &
-  Pick<KittenTTSConfig, 'modelFiles'>;
+export interface ResolvedKittenTTSConfig {
+  model: KittenModel;
+  defaultVoice: KittenVoice;
+  speed: number;
+  storageDirectory: string;
+  modelBaseURL: string;
+  modelFiles?: KittenTTSModelFiles;
+  downloadRetries: number;
+  ortNumThreads: number;
+  maxTokensPerChunk: number;
+  trimTrailingSilence: boolean;
+  silenceThreshold: number;
+  maxSilenceTrimMs: number;
+  phonemizer: KittenPhonemizerProtocol;
+  analytics: ResolvedKittenTTSAnalyticsOptions;
+}
 
 /**
  * Configuration for a {@link KittenTTS} session.
@@ -72,6 +90,13 @@ export interface KittenTTSConfig {
 
   /** Text-to-IPA phonemizer. Defaults to the JS-compiled CEPhonemizer. */
   phonemizer?: KittenPhonemizerProtocol;
+
+  /**
+   * Anonymous SDK analytics. Enabled by default.
+   *
+   * Set `analytics: false` to disable all analytics for this SDK instance.
+   */
+  analytics?: KittenTTSAnalyticsConfig;
 }
 
 /** The fixed output sample rate for all KittenTTS audio (24 kHz). */
@@ -97,5 +122,6 @@ export function resolveConfig(config?: KittenTTSConfig): ResolvedKittenTTSConfig
     silenceThreshold: Math.max(0, config?.silenceThreshold ?? 0.005),
     maxSilenceTrimMs: Math.max(0, config?.maxSilenceTrimMs ?? 250),
     phonemizer: config?.phonemizer ?? defaultPhonemizer(),
+    analytics: resolveAnalyticsOptions(config?.analytics),
   };
 }

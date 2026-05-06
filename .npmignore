@@ -3,6 +3,7 @@
 
 # Example apps and local build artifacts
 examples/
+analytics-worker/
 *.tgz
 node_modules/
 

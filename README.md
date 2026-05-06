@@ -113,6 +113,14 @@ await tts.speak('This voice is generated on the device.');
 
 ---
 
+## Analytics
+
+KittenTTS sends anonymous SDK analytics by default. It does not send input text
+or generated audio. See [Analytics](docs/guides/analytics.md) for what is
+collected and how to disable it.
+
+---
+
 ## Expo Setup
 
 Expo Go cannot load the native ONNX Runtime and filesystem modules used by this
@@ -161,6 +169,7 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 - [WAV output](docs/reference/api.md#kittenttsresult) as raw PCM samples, bytes, or base64.
 - [Word timings](docs/guides/word-timings.md) for read-aloud highlighting.
 - [Streaming generation](docs/reference/api.md#ttsgeneratestreamingtext-voice-speed) for longer text.
+- [Anonymous SDK analytics](docs/guides/analytics.md), enabled by default and configurable.
 
 ---
 
@@ -198,6 +207,7 @@ await tts.speak('Slower Bruno speaking.', KittenVoice.Bruno, 0.85);
 - [Playback](docs/guides/playback.md)
 - [Bundled offline assets](docs/guides/offline-assets.md)
 - [Word timings](docs/guides/word-timings.md)
+- [Analytics](docs/guides/analytics.md)
 - [Models and voices](docs/reference/models.md)
 - [API reference](docs/reference/api.md)
 - [Troubleshooting](docs/troubleshooting.md)

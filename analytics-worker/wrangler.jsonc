@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kittentts-analytics",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-06",
+  "workers_dev": true,
+  "preview_urls": true,
+  "vars": {
+    "ENVIRONMENT": "production",
+    "ALLOWED_ORIGIN": "*"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kittentts_analytics",
+      "database_id": "f29cf672-7842-40d1-9edb-6d2a12886cd6"
+    }
+  ]
+}

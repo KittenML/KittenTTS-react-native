@@ -5,11 +5,14 @@ import {
   errorMessage,
   isKittenTTSError,
 } from '../KittenTTSError';
+import type { KittenTTSAnalyticsPlaybackHelper } from '../analytics/Analytics';
 import { uint8ArrayToBase64 } from './Base64';
 import { WAVEncoder } from './WAVEncoder';
 
 /** Audio player interface that users can provide. */
 export interface AudioPlayer {
+  /** Internal analytics label. Custom players do not need to set this. */
+  kittenTTSPlaybackHelper?: KittenTTSAnalyticsPlaybackHelper;
   /** Play a WAV file at the given path. Resolves when playback finishes. */
   playFile(filePath: string, onPlaybackStart?: () => void): Promise<void>;
   /** Stop current playback. */
@@ -74,6 +77,11 @@ export class AudioOutput {
 
   constructor(player?: AudioPlayer) {
     this.player = player ?? null;
+  }
+
+  getPlaybackHelper(): KittenTTSAnalyticsPlaybackHelper {
+    if (!this.player) return 'none';
+    return this.player.kittenTTSPlaybackHelper ?? 'custom';
   }
 
   async play(
@@ -186,6 +194,7 @@ export function createExpoAudioPlayer(Audio: ExpoAudioModule): AudioPlayer {
   };
 
   return {
+    kittenTTSPlaybackHelper: 'expo-audio',
     async playFile(
       filePath: string,
       onPlaybackStart?: () => void,
@@ -265,6 +274,7 @@ export function createRNSoundPlayer(Sound: RNSoundConstructor): AudioPlayer {
   }
 
   return {
+    kittenTTSPlaybackHelper: 'react-native-sound',
     async playFile(
       filePath: string,
       onPlaybackStart?: () => void,
