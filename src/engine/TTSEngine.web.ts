@@ -1,4 +1,4 @@
-import * as ort from 'onnxruntime-web';
+import type * as Ort from 'onnxruntime-web';
 import {
   KittenTTSError,
   errorMessage,
@@ -22,13 +22,32 @@ export interface TTSEngineOutput {
   phonemes: string;
 }
 
+type OrtRuntime = typeof Ort;
+
+type BrowserDocument = {
+  createElement(tagName: 'script'): {
+    async: boolean;
+    src: string;
+    onload: (() => void) | null;
+    onerror: (() => void) | null;
+  };
+  head: {
+    appendChild(element: unknown): void;
+  };
+};
+
+const DEFAULT_ORT_WEB_VERSION = '1.26.0';
+
+let browserOrtPromise: Promise<OrtRuntime> | undefined;
+
 /**
  * Internal ONNX inference engine.
  *
  * Orchestrates: text -> TextPreprocessor -> Phonemizer -> TextCleaner -> ONNX -> Float32 PCM
  */
 export class TTSEngine {
-  private session: ort.InferenceSession;
+  private ort: OrtRuntime;
+  private session: Ort.InferenceSession;
   private voices: VoiceEmbeddings;
   private config: ResolvedKittenTTSConfig;
   private waveformOutputName: string | undefined;
@@ -36,12 +55,14 @@ export class TTSEngine {
   private disposed = false;
 
   private constructor(
-    session: ort.InferenceSession,
+    ortRuntime: OrtRuntime,
+    session: Ort.InferenceSession,
     voices: VoiceEmbeddings,
     config: ResolvedKittenTTSConfig,
     waveformOutputName: string | undefined,
     durationOutputName: string | undefined,
   ) {
+    this.ort = ortRuntime;
     this.session = session;
     this.voices = voices;
     this.config = config;
@@ -58,7 +79,8 @@ export class TTSEngine {
     config: ResolvedKittenTTSConfig,
   ): Promise<TTSEngine> {
     try {
-      await configureOnnxRuntime(config);
+      const ort = await loadOnnxRuntime(config);
+      await configureOnnxRuntime(ort, config);
       const sessionOptions = {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all',
@@ -76,6 +98,7 @@ export class TTSEngine {
         ? 'duration'
         : undefined;
       return new TTSEngine(
+        ort,
         session,
         voices,
         config,
@@ -169,13 +192,13 @@ export class TTSEngine {
     );
 
     // Create tensors
-    const inputIds = new ort.Tensor(
+    const inputIds = new this.ort.Tensor(
       'int64',
       BigInt64Array.from(tokens.map(t => BigInt(t))),
       [1, tokens.length],
     );
-    const styleTensor = new ort.Tensor('float32', styleVec, [1, styleVec.length]);
-    const speedTensor = new ort.Tensor('float32', Float32Array.of(speed), [1]);
+    const styleTensor = new this.ort.Tensor('float32', styleVec, [1, styleVec.length]);
+    const speedTensor = new this.ort.Tensor('float32', Float32Array.of(speed), [1]);
 
     const feeds = {
       input_ids: inputIds,
@@ -211,7 +234,7 @@ export class TTSEngine {
   }
 
   private resolveWaveformOutputKey(
-    results: Awaited<ReturnType<ort.InferenceSession['run']>>,
+    results: Awaited<ReturnType<Ort.InferenceSession['run']>>,
   ): string | undefined {
     if (this.waveformOutputName && results[this.waveformOutputName]) {
       return this.waveformOutputName;
@@ -226,7 +249,7 @@ export class TTSEngine {
   }
 
   private readDurations(
-    results: Awaited<ReturnType<ort.InferenceSession['run']>>,
+    results: Awaited<ReturnType<Ort.InferenceSession['run']>>,
     waveformOutputKey: string,
   ): number[] {
     const durationKey =
@@ -306,7 +329,51 @@ export class TTSEngine {
   }
 }
 
-async function configureOnnxRuntime(config: ResolvedKittenTTSConfig): Promise<void> {
+async function loadOnnxRuntime(config: ResolvedKittenTTSConfig): Promise<OrtRuntime> {
+  if (!isBrowserRuntime()) {
+    const importModule = new Function(
+      'specifier',
+      'return import(specifier)',
+    ) as (specifier: string) => Promise<OrtRuntime>;
+    return importModule('onnxruntime-web/wasm');
+  }
+
+  const scope = globalThis as {
+    document?: BrowserDocument;
+    ort?: OrtRuntime;
+  };
+
+  if (scope.ort?.InferenceSession) return scope.ort;
+  if (!scope.document) {
+    throw new Error('Browser ONNX Runtime requires a document to load its script.');
+  }
+
+  if (!browserOrtPromise) {
+    browserOrtPromise = new Promise<OrtRuntime>((resolve, reject) => {
+      const script = scope.document!.createElement('script');
+      script.async = true;
+      script.src = defaultOrtScriptURL(config);
+      script.onload = () => {
+        if (scope.ort?.InferenceSession) {
+          resolve(scope.ort);
+        } else {
+          reject(new Error('ONNX Runtime script loaded without exposing globalThis.ort.'));
+        }
+      };
+      script.onerror = () => {
+        reject(new Error(`Failed to load ONNX Runtime script: ${script.src}`));
+      };
+      scope.document!.head.appendChild(script);
+    });
+  }
+
+  return browserOrtPromise;
+}
+
+async function configureOnnxRuntime(
+  ort: OrtRuntime,
+  config: ResolvedKittenTTSConfig,
+): Promise<void> {
   if (config.ortWasmPath === false) return;
   if (ort.env.wasm.wasmBinary || ort.env.wasm.wasmPaths) return;
 
@@ -321,7 +388,7 @@ async function configureOnnxRuntime(config: ResolvedKittenTTSConfig): Promise<vo
   }
 
   if (!isBrowserRuntime()) {
-    await configureNodeOnnxRuntime();
+    await configureNodeOnnxRuntime(ort);
     return;
   }
 
@@ -330,7 +397,7 @@ async function configureOnnxRuntime(config: ResolvedKittenTTSConfig): Promise<vo
   };
 }
 
-async function configureNodeOnnxRuntime(): Promise<void> {
+async function configureNodeOnnxRuntime(ort: OrtRuntime): Promise<void> {
   const [{ readFile }, { createRequire }] = await Promise.all([
     import('node:fs/promises'),
     import('node:module'),
@@ -342,8 +409,14 @@ async function configureNodeOnnxRuntime(): Promise<void> {
 }
 
 function defaultOrtWasmBaseURL(): string {
-  const version = ort.env.versions?.web ?? '1.26.0';
-  return `https://cdn.jsdelivr.net/npm/onnxruntime-web@${version}/dist/`;
+  return `https://cdn.jsdelivr.net/npm/onnxruntime-web@${DEFAULT_ORT_WEB_VERSION}/dist/`;
+}
+
+function defaultOrtScriptURL(config: ResolvedKittenTTSConfig): string {
+  if (typeof config.ortWasmPath === 'string') {
+    return `${normalizeWasmDirectory(config.ortWasmPath)}ort.wasm.min.js`;
+  }
+  return `${defaultOrtWasmBaseURL()}ort.wasm.min.js`;
 }
 
 function normalizeWasmDirectory(path: string): string {

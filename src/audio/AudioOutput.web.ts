@@ -124,6 +124,26 @@ export function createBrowserAudioPlayer(): AudioPlayer {
   };
 }
 
+/**
+ * Compatibility helper for Expo web builds.
+ *
+ * Native builds use the `expo-audio` implementation. Web builds play the
+ * generated WAV through an HTML audio element, so the Expo module argument is
+ * accepted for shared app code but is not needed.
+ */
+export function createExpoAudioPlayer(_Audio?: unknown): AudioPlayer {
+  return createBrowserAudioPlayer();
+}
+
+/**
+ * Compatibility helper for shared imports in web builds.
+ *
+ * React Native Sound is native-only; web builds use browser audio playback.
+ */
+export function createRNSoundPlayer(_Sound?: unknown): AudioPlayer {
+  return createBrowserAudioPlayer();
+}
+
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(
     bytes.byteOffset,

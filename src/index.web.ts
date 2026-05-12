@@ -32,5 +32,9 @@ export {
 export type { KittenPhonemizerProtocol } from './phonemizer/types';
 export { CEPhonemizer } from './phonemizer/CEPhonemizer.web';
 export { WAVEncoder } from './audio/WAVEncoder';
-export { createBrowserAudioPlayer } from './audio/AudioOutput.web';
+export {
+  createBrowserAudioPlayer,
+  createExpoAudioPlayer,
+  createRNSoundPlayer,
+} from './audio/AudioOutput.web';
 export type { AudioPlayer, AudioPlayOptions } from './audio/AudioOutput.web';
