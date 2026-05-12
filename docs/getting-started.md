@@ -10,6 +10,7 @@ instance, and generate speech.
 | React Native | `>= 0.72` |
 | iOS | `15.1+` |
 | Android | API `24+` |
+| Web | modern browser with WebAssembly support |
 | Node.js | `20+` recommended for examples |
 
 Expo Go will not work. KittenTTS depends on native modules:
@@ -18,6 +19,8 @@ Expo Go will not work. KittenTTS depends on native modules:
 - `react-native-fs`
 
 Use a bare React Native app, an Expo development build, or a prebuilt Expo app.
+React Native Web builds use `onnxruntime-web` and do not require those native
+modules at runtime.
 
 ## Install
 
@@ -56,6 +59,30 @@ For playback with `speak()`, install a player:
 npm install react-native-sound
 cd ios && pod install && cd ..
 ```
+
+## Web
+
+React Native Web builds resolve the package's browser entrypoint. The web
+runtime uses `onnxruntime-web`, Cache API storage for downloaded model files,
+and the same JavaScript CE phonemizer.
+
+```tsx
+import {
+  KittenTTS,
+  createBrowserAudioPlayer,
+} from '@kittentts/react-native';
+
+const tts = await KittenTTS.create({
+  player: createBrowserAudioPlayer(),
+});
+
+await tts.speak('Hello from KittenTTS on web.');
+await tts.dispose();
+```
+
+The browser path also supports `generate()`, `wordTimings`, `wavData()`, and
+`wavBase64()`. Pass `ortWasmPath` if your app needs to self-host ONNX Runtime
+WASM assets instead of using the SDK defaults.
 
 ## Generate Audio
 
@@ -117,6 +144,8 @@ await tts.dispose();
 
 The first `KittenTTS.create()` downloads the selected model, `voices.npz`, and
 phonemizer files. Later calls reuse the device cache.
+On web, the cache is stored through the browser Cache API when available and
+falls back to memory storage.
 
 Default model cache:
 

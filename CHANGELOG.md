@@ -5,6 +5,8 @@
 - Added Swift-parity word timing metadata via `KittenTTSResult.wordTimings`.
 - Added `KittenTTS.generateStreaming()` for sentence-by-sentence generation.
 - Added `tts.play(result)` so apps can inspect timings before playback.
+- Added React Native Web support through browser-specific ONNX Runtime Web,
+  Cache API asset storage, CE phonemizer, and audio playback implementations.
 
 ## 0.8.0
 
