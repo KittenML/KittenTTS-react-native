@@ -307,6 +307,7 @@ export function createRNSoundPlayer(Sound: RNSoundConstructor): AudioPlayer {
  * the package's web entrypoint.
  */
 export function createBrowserAudioPlayer(): AudioPlayer {
+  // Browser builds use AudioOutput.web.ts; this stub should never be reached.
   throw KittenTTSError.playbackFailed(
     'createBrowserAudioPlayer() is only available in React Native Web builds.',
   );

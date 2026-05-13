@@ -331,6 +331,9 @@ export class TTSEngine {
 
 async function loadOnnxRuntime(config: ResolvedKittenTTSConfig): Promise<OrtRuntime> {
   if (!isBrowserRuntime()) {
+    // Keep this import opaque to web bundlers. A plain dynamic import causes
+    // Metro web to parse ONNX Runtime's generated wasm loader, which fails on
+    // its dynamic import pattern before the SDK can configure the Node path.
     const importModule = new Function(
       'specifier',
       'return import(specifier)',

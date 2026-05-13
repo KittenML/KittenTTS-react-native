@@ -84,6 +84,11 @@ The browser path also supports `generate()`, `wordTimings`, `wavData()`, and
 `wavBase64()`. Pass `ortWasmPath` if your app needs to self-host ONNX Runtime
 WASM assets instead of using the SDK defaults.
 
+By default, browser builds load the pinned ONNX Runtime Web script and WASM
+assets from jsDelivr. That keeps the SDK simple to drop into React Native Web,
+but production apps that require tighter supply-chain control or CDN outage
+isolation should self-host those files and set `ortWasmPath` to that directory.
+
 ## Generate Audio
 
 Use `generate()` when you want audio data back without playing it immediately.

@@ -26,6 +26,11 @@
 > need a development build or a prebuilt native project. Web builds use
 > `onnxruntime-web` and browser storage instead.
 
+> React Native Web loads a pinned ONNX Runtime Web script and WASM assets from
+> jsDelivr by default. For production apps that need CDN independence or stricter
+> supply-chain controls, self-host those ONNX Runtime assets and set
+> `ortWasmPath`.
+
 ## See It In Action
 
 <p align="center">
