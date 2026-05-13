@@ -34,12 +34,13 @@
 ## See It In Action
 
 <p align="center">
-  <img src="assets/expo-example.gif" alt="KittenTTS Expo example running on iOS" width="48%" />
-  <img src="assets/word-timing-example.gif" alt="KittenTTS word highlighting demo on Android" width="48%" />
+  <img src="assets/expo-example.gif" alt="KittenTTS Expo example running on iOS" width="31%" />
+  <img src="assets/word-timing-example.gif" alt="KittenTTS word highlighting demo on Android" width="31%" />
+  <img src="assets/web-example.gif" alt="KittenTTS React Native Web example running in a browser" width="31%" />
 </p>
 
 <p align="center">
-  <strong>Device: iOS</strong> · Expo example &nbsp;&nbsp;&nbsp; <strong>Device: Android</strong> · Word timings
+  <strong>Device: iOS</strong> · Expo example &nbsp;&nbsp;&nbsp; <strong>Device: Android</strong> · Word timings &nbsp;&nbsp;&nbsp; <strong>Web</strong> · Browser example
 </p>
 
 ---
