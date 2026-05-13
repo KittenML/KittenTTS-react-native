@@ -43,7 +43,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/web-example.gif" alt="KittenTTS React Native Web example running in a browser" width="78%" />
+  <img src="assets/web-example.gif" alt="KittenTTS React Native Web example running in a browser" width="90%" />
 </p>
 
 <p align="center">
