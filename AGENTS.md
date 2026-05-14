@@ -21,6 +21,7 @@ Main flow:
 - `src/index.ts`: public exports.
 - `src/KittenTTS.ts`: main SDK class and lifecycle.
 - `src/KittenTTSConfig.ts`: user config and defaults.
+- `src/*.web.ts`: React Native Web entrypoints and platform-specific browser implementations.
 - `src/KittenTTSError.ts`: SDK error codes and helpers.
 - `src/KittenModel.ts`: model names, download URLs, sizes, speed priors.
 - `src/KittenVoice.ts`: voice enum and display helpers.
@@ -29,6 +30,7 @@ Main flow:
 - `src/engine/TTSEngine.ts`: text-to-token-to-ONNX inference.
 - `src/phonemizer/CEPhonemizer.ts`: JS/Emscripten phonemizer adapter.
 - `src/audio/AudioOutput.ts`: optional playback helpers.
+- `src/storage/AssetStorage.ts`: web/Node asset cache abstraction used by the web platform files.
 - `vendor/cephonemizer/`: vendored C++ phonemizer source.
 - `scripts/build-cephonemizer.js`: builds generated phonemizer runtime.
 - `scripts/patch-onnxruntime-react-native.js`: postinstall ONNX Runtime compatibility patches.

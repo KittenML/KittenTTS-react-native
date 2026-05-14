@@ -4,9 +4,24 @@
   "description": "On-device text-to-speech for React Native, powered by KittenTTS + ONNX Runtime",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
+  "browser": {
+    "./lib/index.js": "./lib/index.web.js",
+    "./lib/KittenTTS.js": "./lib/KittenTTS.web.js",
+    "./lib/KittenTTSBundledAssets.js": "./lib/KittenTTSBundledAssets.web.js",
+    "./lib/KittenTTSConfig.js": "./lib/KittenTTSConfig.web.js",
+    "./lib/audio/AudioOutput.js": "./lib/audio/AudioOutput.web.js",
+    "./lib/engine/TTSEngine.js": "./lib/engine/TTSEngine.web.js",
+    "./lib/loader/ModelDownloader.js": "./lib/loader/ModelDownloader.web.js",
+    "./lib/loader/NPZLoader.js": "./lib/loader/NPZLoader.web.js",
+    "./lib/phonemizer/CEPhonemizer.js": "./lib/phonemizer/CEPhonemizer.web.js"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
+      "browser": {
+        "types": "./lib/index.web.d.ts",
+        "default": "./lib/index.web.js"
+      },
       "react-native": "./lib/index.js",
       "require": "./lib/index.js",
       "default": "./lib/index.js"
@@ -92,6 +107,7 @@
   },
   "dependencies": {
     "onnxruntime-react-native": "^1.24.3",
+    "onnxruntime-web": "^1.24.3",
     "react-native-fs": "npm:@dr.pogodin/react-native-fs@^2.38.2",
     "pako": "^2.1.0"
   }

@@ -52,6 +52,23 @@ const tts = await KittenTTS.create({
 await tts.speak('This plays through react-native-sound.');
 ```
 
+## Browser Audio
+
+React Native Web builds can use the browser audio helper:
+
+```tsx
+import {
+  KittenTTS,
+  createBrowserAudioPlayer,
+} from '@kittentts/react-native';
+
+const tts = await KittenTTS.create({
+  player: createBrowserAudioPlayer(),
+});
+
+await tts.speak('This plays through an HTML audio element.');
+```
+
 ## Generate First, Then Play
 
 This is useful when the UI needs metadata from the generated result before

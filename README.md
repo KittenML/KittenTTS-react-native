@@ -5,9 +5,9 @@
 </p>
 
 <p align="center">
-  On-device text-to-speech for React Native.
+  On-device text-to-speech for React Native and React Native Web.
   <br />
-  Generate speech on iOS and Android without sending text to a cloud TTS API.
+  Generate speech on iOS, Android, and web without sending text to a cloud TTS API.
 </p>
 
 <p align="center">
@@ -21,9 +21,15 @@
 
 > Developer preview. APIs may change between releases.
 
-> Expo Go will not work. KittenTTS uses native modules
-> (`onnxruntime-react-native` and `react-native-fs`), so Expo apps need a
-> development build or a prebuilt native project.
+> Expo Go will not work for native iOS/Android. KittenTTS uses native modules
+> (`onnxruntime-react-native` and `react-native-fs`) on mobile, so Expo apps
+> need a development build or a prebuilt native project. Web builds use
+> `onnxruntime-web` and browser storage instead.
+
+> React Native Web loads a pinned ONNX Runtime Web script and WASM assets from
+> jsDelivr by default. For production apps that need CDN independence or stricter
+> supply-chain controls, self-host those ONNX Runtime assets and set
+> `ortWasmPath`.
 
 ## See It In Action
 
@@ -34,6 +40,14 @@
 
 <p align="center">
   <strong>Device: iOS</strong> · Expo example &nbsp;&nbsp;&nbsp; <strong>Device: Android</strong> · Word timings
+</p>
+
+<p align="center">
+  <img src="assets/web-example.gif" alt="KittenTTS React Native Web example running in a browser" width="90%" />
+</p>
+
+<p align="center">
+  <strong>Web</strong> · Browser example
 </p>
 
 ---
@@ -60,6 +74,7 @@ No cloud. No API key. No text leaving the device for speech generation.
 | --- | --- | --- |
 | React Native iOS | Developer preview | [Getting started](docs/getting-started.md) |
 | React Native Android | Developer preview | [Getting started](docs/getting-started.md) |
+| React Native Web | Developer preview | [Getting started](docs/getting-started.md#web) |
 | Expo development build | Supported | [Expo setup](docs/getting-started.md#expo-development-build) |
 | Expo Go | Not supported | [Why not?](docs/troubleshooting.md#expo-go-fails) |
 
@@ -109,6 +124,21 @@ const tts = await KittenTTS.create({
 await tts.speak('This voice is generated on the device.');
 ```
 
+Play audio in a web build:
+
+```tsx
+import {
+  KittenTTS,
+  createBrowserAudioPlayer,
+} from '@kittentts/react-native';
+
+const tts = await KittenTTS.create({
+  player: createBrowserAudioPlayer(),
+});
+
+await tts.speak('This voice is generated in the browser.');
+```
+
 [Full getting started guide →](docs/getting-started.md)
 
 ---
@@ -153,7 +183,7 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 
 ## Features
 
-- [On-device TTS inference](docs/getting-started.md) on iOS and Android.
+- [On-device TTS inference](docs/getting-started.md) on iOS, Android, and web.
 - [Model download and cache](docs/reference/api.md#cache-methods) with progress callbacks.
 - [Bundled offline assets](docs/guides/offline-assets.md) for apps that cannot depend on a first-run download.
 - [Expo development builds](docs/getting-started.md#expo-development-build); Expo Go is [not supported](docs/troubleshooting.md#expo-go-fails).

@@ -298,3 +298,17 @@ export function createRNSoundPlayer(Sound: RNSoundConstructor): AudioPlayer {
     },
   };
 }
+
+/**
+ * Create a browser audio player for React Native Web builds.
+ *
+ * Native iOS and Android builds should use `createExpoAudioPlayer()` or
+ * `createRNSoundPlayer()`. The actual browser implementation is provided by
+ * the package's web entrypoint.
+ */
+export function createBrowserAudioPlayer(): AudioPlayer {
+  // Browser builds use AudioOutput.web.ts; this stub should never be reached.
+  throw KittenTTSError.playbackFailed(
+    'createBrowserAudioPlayer() is only available in React Native Web builds.',
+  );
+}
