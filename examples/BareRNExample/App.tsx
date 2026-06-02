@@ -1,5 +1,6 @@
 import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {
+  Image,
   SafeAreaView,
   ScrollView,
   View,
@@ -21,6 +22,8 @@ import {
   ALL_VOICES,
   createRNSoundPlayer,
 } from '@kittentts/react-native';
+
+const LOGO = require('./assets/kittenml_logo.png');
 
 type AppState =
   | {kind: 'idle'}
@@ -58,43 +61,43 @@ export default function App() {
     state.kind === 'generating' ||
     state.kind === 'playing';
 
-  const initTTS = useCallback(
-    async (model: KittenModel) => {
-      try {
-        await ttsRef.current?.dispose();
-        setState({kind: 'preparing'});
-        setResult(null);
+  const initTTS = useCallback(async (model: KittenModel) => {
+    try {
+      await ttsRef.current?.dispose();
+      setState({kind: 'preparing'});
+      setResult(null);
 
-        const instance = await KittenTTS.create(
-          {model, player: createRNSoundPlayer(Sound)},
-          (progress, info) => {
-            if (mountedRef.current && info?.stage === 'downloading') {
-              setState({
-                kind: 'downloading',
-                progress,
-              });
-            }
-          },
-        );
+      const instance = await KittenTTS.create(
+        {model, player: createRNSoundPlayer(Sound)},
+        (progress, info) => {
+          if (mountedRef.current && info?.stage === 'downloading') {
+            setState({
+              kind: 'downloading',
+              progress,
+            });
+          }
+        },
+      );
 
-        if (!mountedRef.current) {
-          if (!__DEV__) await instance.dispose();
-          return;
-        }
-
-        ttsRef.current = instance;
-        setTts(instance);
-        setState({kind: 'idle'});
-      } catch (error: unknown) {
-        ttsRef.current = null;
-        if (mountedRef.current) {
-          setTts(null);
-          setState({kind: 'error', message: getErrorMessage(error, 'Init failed')});
-        }
+      if (!mountedRef.current) {
+        if (!__DEV__) await instance.dispose();
+        return;
       }
-    },
-    [],
-  );
+
+      ttsRef.current = instance;
+      setTts(instance);
+      setState({kind: 'idle'});
+    } catch (error: unknown) {
+      ttsRef.current = null;
+      if (mountedRef.current) {
+        setTts(null);
+        setState({
+          kind: 'error',
+          message: getErrorMessage(error, 'Init failed'),
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -121,7 +124,10 @@ export default function App() {
       setResult(res);
       setState({kind: 'idle'});
     } catch (error: unknown) {
-      setState({kind: 'error', message: getErrorMessage(error, 'Generation failed')});
+      setState({
+        kind: 'error',
+        message: getErrorMessage(error, 'Generation failed'),
+      });
     }
   }, [tts, inputText, selectedVoice, selectedSpeed]);
 
@@ -135,7 +141,10 @@ export default function App() {
       setResult(res);
       setState({kind: 'idle'});
     } catch (error: unknown) {
-      setState({kind: 'error', message: getErrorMessage(error, 'Playback failed')});
+      setState({
+        kind: 'error',
+        message: getErrorMessage(error, 'Playback failed'),
+      });
     }
   }, [tts, inputText, selectedVoice, selectedSpeed]);
 
@@ -150,128 +159,111 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>KittenTTS</Text>
-        <Text style={styles.subtitle}>On-Device Text-to-Speech</Text>
+        <View style={styles.header}>
+          <View style={styles.logoMark}>
+            <Image source={LOGO} style={styles.logoImage} />
+          </View>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>KittenTTS Example</Text>
+            <Text style={styles.subtitle}>
+              Bare React Native example of the React Native SDK for KittenTTS
+            </Text>
+          </View>
+        </View>
 
-        <StatusBanner state={state} />
+        <View style={styles.demoCard}>
+          <View style={styles.modelRow}>
+            <View style={styles.modelRowLeft}>
+              <Text style={styles.modelRowLabel}>Model</Text>
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{statusSummary(state)}</Text>
+              </View>
+            </View>
+            <View style={styles.softBadge}>
+              <Text style={styles.softBadgeText}>
+                {modelDisplayName(selectedModel)}
+              </Text>
+            </View>
+          </View>
 
-        {/* Text Input */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Text</Text>
-          <TextInput
-            style={styles.textInput}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            numberOfLines={4}
-            editable={!isWorking}
-            placeholder="Enter text to synthesise..."
-            placeholderTextColor="#999"
+          <View style={styles.section}>
+            <Text style={styles.label}>Text</Text>
+            <TextInput
+              style={styles.textInput}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              numberOfLines={5}
+              editable={!isWorking}
+              placeholder="Enter something to speak"
+              placeholderTextColor="#8D8D93"
+            />
+          </View>
+
+          <OptionGroup
+            label="Model"
+            values={MODELS}
+            selected={selectedModel}
+            disabled={isWorking}
+            getLabel={modelDisplayName}
+            onSelect={handleModelChange}
           />
-        </View>
 
-        {/* Model Picker */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Model</Text>
-          <View style={styles.chipRow}>
-            {MODELS.map(model => (
+          <OptionGroup
+            label="Voice"
+            values={ALL_VOICES}
+            selected={selectedVoice}
+            disabled={isWorking}
+            getLabel={voiceDisplayName}
+            onSelect={setSelectedVoice}
+          />
+
+          <OptionGroup
+            label={`Speed: ${speedLabel(selectedSpeed)}`}
+            values={SPEED_OPTIONS}
+            selected={selectedSpeed}
+            disabled={isWorking}
+            getLabel={speedLabel}
+            onSelect={setSelectedSpeed}
+          />
+
+          <View style={styles.actionGroup}>
+            <Text style={styles.actionGroupLabel}>Playback</Text>
+            <View style={styles.buttonRow}>
               <TouchableOpacity
-                key={model}
                 style={[
-                  styles.chip,
-                  selectedModel === model && styles.chipSelected,
+                  styles.button,
+                  (isWorking || !inputText.trim() || !tts) && styles.disabled,
                 ]}
-                onPress={() => handleModelChange(model)}
-                disabled={isWorking}>
-                <Text
-                  style={[
-                    styles.chipText,
-                    selectedModel === model && styles.chipTextSelected,
-                  ]}>
-                  {modelDisplayName(model)}
+                onPress={handleGenerate}
+                disabled={isWorking || !inputText.trim() || !tts}>
+                <Text style={styles.buttonText}>Generate</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  styles.buttonPrimary,
+                  (isWorking || !inputText.trim() || !tts) && styles.disabled,
+                ]}
+                onPress={handleSpeak}
+                disabled={isWorking || !inputText.trim() || !tts}>
+                <Text style={[styles.buttonText, styles.buttonPrimaryText]}>
+                  Speak
                 </Text>
               </TouchableOpacity>
-            ))}
+            </View>
           </View>
+
+          <StatusBanner state={state} />
+
+          <Text style={styles.disclaimer}>
+            This system is for demonstration purposes only and is not intended
+            to process sensitive or personal data.
+          </Text>
+
+          {result && <ResultCard result={result} />}
         </View>
-
-        {/* Voice Picker */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Voice</Text>
-          <View style={styles.chipRow}>
-            {ALL_VOICES.map(voice => (
-              <TouchableOpacity
-                key={voice}
-                style={[
-                  styles.chip,
-                  selectedVoice === voice && styles.chipSelected,
-                ]}
-                onPress={() => setSelectedVoice(voice)}
-                disabled={isWorking}>
-                <Text
-                  style={[
-                    styles.chipText,
-                    selectedVoice === voice && styles.chipTextSelected,
-                  ]}>
-                  {voiceDisplayName(voice)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Speed Picker */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Speed: {selectedSpeed.toFixed(1)}x</Text>
-          <View style={styles.chipRow}>
-            {SPEED_OPTIONS.map(speed => (
-              <TouchableOpacity
-                key={speed}
-                style={[
-                  styles.chip,
-                  selectedSpeed === speed && styles.chipSelected,
-                ]}
-                onPress={() => setSelectedSpeed(speed)}
-                disabled={isWorking}>
-                <Text
-                  style={[
-                    styles.chipText,
-                    selectedSpeed === speed && styles.chipTextSelected,
-                  ]}>
-                  {speed.toFixed(1)}x
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[
-              styles.button,
-              styles.buttonPrimary,
-              (isWorking || !inputText.trim() || !tts) && styles.buttonDisabled,
-            ]}
-            onPress={handleGenerate}
-            disabled={isWorking || !inputText.trim() || !tts}>
-            <Text style={styles.buttonPrimaryText}>Generate</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.button,
-              styles.buttonSecondary,
-              (isWorking || !inputText.trim() || !tts) && styles.buttonDisabled,
-            ]}
-            onPress={handleSpeak}
-            disabled={isWorking || !inputText.trim() || !tts}>
-            <Text style={styles.buttonSecondaryText}>Speak</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Result Card */}
-        {result && <ResultCard result={result} />}
       </ScrollView>
     </SafeAreaView>
   );
@@ -281,6 +273,70 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function OptionGroup<T extends string | number>({
+  label,
+  values,
+  selected,
+  disabled,
+  getLabel,
+  onSelect,
+}: {
+  label: string;
+  values: readonly T[];
+  selected: T;
+  disabled: boolean;
+  getLabel: (value: T) => string;
+  onSelect: (value: T) => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.chipRow}>
+        {values.map(value => {
+          const active = value === selected;
+          return (
+            <TouchableOpacity
+              key={String(value)}
+              disabled={disabled}
+              style={[
+                styles.chip,
+                active && styles.chipSelected,
+                disabled && styles.disabled,
+              ]}
+              onPress={() => onSelect(value)}>
+              <Text
+                style={[styles.chipText, active && styles.chipTextSelected]}>
+                {getLabel(value)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function statusSummary(state: AppState): string {
+  switch (state.kind) {
+    case 'idle':
+      return 'Ready';
+    case 'preparing':
+      return 'Preparing';
+    case 'downloading':
+      return `${Math.round(state.progress * 100)}%`;
+    case 'generating':
+      return 'Generating';
+    case 'playing':
+      return 'Playing';
+    case 'error':
+      return 'Error';
+  }
+}
+
+function speedLabel(speed: number) {
+  return `${speed.toFixed(2).replace(/0$/, '')}x`;
+}
+
 function StatusBanner({state}: {state: AppState}) {
   switch (state.kind) {
     case 'idle':
@@ -288,31 +344,33 @@ function StatusBanner({state}: {state: AppState}) {
     case 'preparing':
       return (
         <View style={styles.banner}>
-          <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.bannerText}>Preparing model...</Text>
+          <ActivityIndicator size="small" color="#18181B" />
+          <Text style={styles.bannerText}>
+            Preparing model and phonemizer...
+          </Text>
         </View>
       );
     case 'downloading':
       return (
         <View style={styles.banner}>
-          <ActivityIndicator size="small" color="#007AFF" />
+          <ActivityIndicator size="small" color="#18181B" />
           <Text style={styles.bannerText}>
-            Downloading model... {Math.round(state.progress * 100)}%
+            Downloading ({Math.round(state.progress * 100)}%)
           </Text>
         </View>
       );
     case 'generating':
       return (
         <View style={styles.banner}>
-          <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.bannerText}>Generating speech...</Text>
+          <ActivityIndicator size="small" color="#18181B" />
+          <Text style={styles.bannerText}>Generating audio...</Text>
         </View>
       );
     case 'playing':
       return (
         <View style={styles.banner}>
-          <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.bannerText}>Playing...</Text>
+          <ActivityIndicator size="small" color="#18181B" />
+          <Text style={styles.bannerText}>Playing audio...</Text>
         </View>
       );
     case 'error':
@@ -330,9 +388,7 @@ function ResultCard({result}: {result: KittenTTSResult}) {
       <Text style={styles.resultTitle}>Generated Audio</Text>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Voice</Text>
-        <Text style={styles.resultValue}>
-          {voiceDisplayName(result.voice)}
-        </Text>
+        <Text style={styles.resultValue}>{voiceDisplayName(result.voice)}</Text>
       </View>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Duration</Text>
@@ -357,54 +413,128 @@ function ResultCard({result}: {result: KittenTTSResult}) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#FAFAFA',
   },
   content: {
-    padding: 20,
+    alignSelf: 'center',
+    maxWidth: 430,
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingTop: 24,
     paddingBottom: 40,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#000',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     marginBottom: 20,
   },
-  section: {
-    marginBottom: 16,
+  logoMark: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 48,
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+    width: 48,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  logoImage: {
+    height: 48,
+    width: 48,
   },
-  textInput: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 14,
+  headerCopy: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#09090B',
+    lineHeight: 32,
+  },
+  subtitle: {
     fontSize: 16,
-    color: '#000',
-    minHeight: 100,
-    textAlignVertical: 'top',
+    color: '#71717A',
+    lineHeight: 22,
+    marginTop: 6,
+  },
+  demoCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E4E4E7',
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 16,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: {width: 0, height: 1},
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
+        shadowOpacity: 0.04,
+        shadowRadius: 2,
       },
       android: {
         elevation: 1,
       },
     }),
+  },
+  modelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  modelRowLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: 8,
+  },
+  modelRowLabel: {
+    color: '#09090B',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pill: {
+    backgroundColor: '#F4F4F5',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  pillText: {
+    color: '#52525B',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  softBadge: {
+    backgroundColor: '#F4F4F5',
+    borderRadius: 8,
+    flexShrink: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  softBadgeText: {
+    color: '#09090B',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  section: {
+    marginBottom: 18,
+  },
+  label: {
+    color: '#52525B',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+    marginBottom: 8,
+  },
+  textInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E4E4E7',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#09090B',
+    fontSize: 15,
+    lineHeight: 22,
+    minHeight: 122,
+    padding: 12,
+    textAlignVertical: 'top',
   },
   chipRow: {
     flexDirection: 'row',
@@ -412,112 +542,119 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    backgroundColor: '#F4F4F5',
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 38,
+    paddingHorizontal: 12,
   },
   chipSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: '#D4D4D8',
   },
   chipText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#333',
+    color: '#52525B',
+    fontSize: 14,
+    fontWeight: '600',
   },
   chipTextSelected: {
-    color: '#FFF',
+    color: '#09090B',
+  },
+  actionGroup: {
+    backgroundColor: '#F4F4F5',
+    borderRadius: 8,
+    marginTop: 2,
+    padding: 10,
+  },
+  actionGroupLabel: {
+    color: '#52525B',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
-    marginBottom: 16,
   },
   button: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 46,
   },
   buttonPrimary: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#18181B',
   },
-  buttonSecondary: {
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#007AFF',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
+  buttonText: {
+    color: '#09090B',
+    fontSize: 15,
+    fontWeight: '700',
   },
   buttonPrimaryText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  buttonSecondaryText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
+  disabled: {
+    opacity: 0.48,
+  },
+  disclaimer: {
+    color: '#71717A',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 16,
   },
   banner: {
-    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0F4FF',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 16,
+    flexDirection: 'row',
     gap: 10,
+    marginTop: 16,
   },
   bannerText: {
-    fontSize: 14,
-    color: '#007AFF',
+    color: '#854D0E',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   bannerError: {
-    backgroundColor: '#FFF0F0',
+    alignItems: 'flex-start',
   },
   bannerErrorText: {
-    fontSize: 14,
-    color: '#FF3B30',
+    color: '#B42318',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   resultCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: {width: 0, height: 2},
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    backgroundColor: '#FAFAFA',
+    borderColor: '#E4E4E7',
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 18,
+    padding: 12,
   },
   resultTitle: {
+    color: '#09090B',
     fontSize: 16,
-    fontWeight: '600',
-    color: '#34C759',
+    fontWeight: '700',
     marginBottom: 12,
   },
   resultRow: {
     flexDirection: 'row',
+    gap: 12,
     justifyContent: 'space-between',
     paddingVertical: 4,
   },
   resultLabel: {
+    color: '#71717A',
     fontSize: 14,
-    color: '#666',
   },
   resultValue: {
+    color: '#09090B',
+    flexShrink: 1,
     fontSize: 14,
-    fontWeight: '500',
-    color: '#000',
+    fontWeight: '700',
+    textAlign: 'right',
   },
 });

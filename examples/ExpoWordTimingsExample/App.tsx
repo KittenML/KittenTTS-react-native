@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -9,9 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import {StatusBar} from 'expo-status-bar';
 import * as ExpoAudio from 'expo-audio';
 import {
+  ALL_VOICES,
   KittenModel,
   KittenTTS,
   KittenTTSResult,
@@ -22,22 +24,18 @@ import {
   modelDisplayName,
   voiceDisplayName,
 } from '@kittentts/react-native';
-import type { KittenWordTiming } from '@kittentts/react-native';
+import type {KittenWordTiming} from '@kittentts/react-native';
+
+const LOGO = require('./assets/kittenml_logo.png');
 
 type Status =
-  | { kind: 'idle'; message: string }
-  | { kind: 'preparing' }
-  | { kind: 'loading'; progress: number }
-  | { kind: 'working'; message: string }
-  | { kind: 'error'; message: string };
+  | {kind: 'idle'; message: string}
+  | {kind: 'preparing'}
+  | {kind: 'loading'; progress: number}
+  | {kind: 'working'; message: string}
+  | {kind: 'error'; message: string};
 
 const MODEL = KittenModel.NanoInt8;
-const VOICES = [
-  KittenVoice.Bella,
-  KittenVoice.Luna,
-  KittenVoice.Jasper,
-  KittenVoice.Leo,
-];
 
 export default function App() {
   const [text, setText] = useState(
@@ -54,7 +52,10 @@ export default function App() {
   const highlightTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const player = useMemo(() => createExpoAudioPlayer(ExpoAudio), []);
 
-  const busy = status.kind === 'preparing' || status.kind === 'loading' || status.kind === 'working';
+  const busy =
+    status.kind === 'preparing' ||
+    status.kind === 'loading' ||
+    status.kind === 'working';
 
   useEffect(() => {
     return () => {
@@ -68,13 +69,13 @@ export default function App() {
   async function getTTS(): Promise<KittenTTS> {
     if (ttsRef.current) return ttsRef.current;
 
-    setStatus({ kind: 'preparing' });
-    const cached = await KittenTTS.isModelDownloaded({ model: MODEL });
+    setStatus({kind: 'preparing'});
+    const cached = await KittenTTS.isModelDownloaded({model: MODEL});
     const instance = await KittenTTS.create(
-      { model: MODEL, defaultVoice: voice, player },
+      {model: MODEL, defaultVoice: voice, player},
       (progress, info) => {
         if (info?.stage === 'downloading') {
-          setStatus({ kind: 'loading', progress });
+          setStatus({kind: 'loading', progress});
         }
       },
     );
@@ -89,7 +90,7 @@ export default function App() {
 
   async function speak() {
     if (!text.trim()) {
-      setStatus({ kind: 'error', message: 'Enter text before speaking.' });
+      setStatus({kind: 'error', message: 'Enter text before speaking.'});
       return;
     }
 
@@ -97,24 +98,27 @@ export default function App() {
       setResult(null);
       setActiveWordIndex(null);
       const tts = await getTTS();
-      setStatus({ kind: 'working', message: 'Generating audio...' });
+      setStatus({kind: 'working', message: 'Generating audio...'});
       const nextResult = await tts.generate(text, voice);
       setResult(nextResult);
-      setStatus({ kind: 'working', message: 'Playing with word highlighting...' });
+      setStatus({
+        kind: 'working',
+        message: 'Playing with word highlighting...',
+      });
       await tts.play(nextResult, {
         onPlaybackStart: () => startWordHighlighting(nextResult),
       });
       stopWordHighlighting();
-      setStatus({ kind: 'idle', message: 'Playback finished.' });
+      setStatus({kind: 'idle', message: 'Playback finished.'});
     } catch (error) {
       stopWordHighlighting();
-      setStatus({ kind: 'error', message: friendlyError(error) });
+      setStatus({kind: 'error', message: friendlyError(error)});
     }
   }
 
   async function generateOnly() {
     if (!text.trim()) {
-      setStatus({ kind: 'error', message: 'Enter text before generating.' });
+      setStatus({kind: 'error', message: 'Enter text before generating.'});
       return;
     }
 
@@ -122,12 +126,12 @@ export default function App() {
       setResult(null);
       setActiveWordIndex(null);
       const tts = await getTTS();
-      setStatus({ kind: 'working', message: 'Generating audio...' });
+      setStatus({kind: 'working', message: 'Generating audio...'});
       const nextResult = await tts.generate(text, voice);
       setResult(nextResult);
-      setStatus({ kind: 'idle', message: 'Generated audio with word timings.' });
+      setStatus({kind: 'idle', message: 'Generated audio with word timings.'});
     } catch (error) {
-      setStatus({ kind: 'error', message: friendlyError(error) });
+      setStatus({kind: 'error', message: friendlyError(error)});
     }
   }
 
@@ -136,77 +140,105 @@ export default function App() {
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Word Timings</Text>
-          <Text style={styles.subtitle}>
-            Expo SDK 55 development-build demo. Expo Go will not work.
-          </Text>
-        </View>
-
-        <View style={styles.panel}>
-          <Text style={styles.label}>Model</Text>
-          <Text style={styles.value}>{modelDisplayName(MODEL)}</Text>
-        </View>
-
-        <View style={styles.panel}>
-          <Text style={styles.label}>Text</Text>
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            editable={!busy}
-            multiline
-            placeholder="Type a sentence"
-            placeholderTextColor="#777"
-            style={styles.input}
-          />
-        </View>
-
-        <View style={styles.panel}>
-          <Text style={styles.label}>Voice</Text>
-          <View style={styles.options}>
-            {VOICES.map((item) => (
-              <Pressable
-                key={item}
-                disabled={busy}
-                onPress={() => setVoice(item)}
-                style={[styles.option, voice === item && styles.optionSelected]}
-              >
-                <Text
-                  style={[
-                    styles.optionText,
-                    voice === item && styles.optionTextSelected,
-                  ]}
-                >
-                  {voiceDisplayName(item)}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={styles.logoMark}>
+            <Image source={LOGO} style={styles.logoImage} />
+          </View>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>KittenTTS Example</Text>
+            <Text style={styles.subtitle}>
+              Word timings example of the React Native SDK for KittenTTS
+            </Text>
           </View>
         </View>
 
-        <StatusView status={status} />
+        <View style={styles.demoCard}>
+          <View style={styles.modelRow}>
+            <View style={styles.modelRowLeft}>
+              <Text style={styles.modelRowLabel}>Model</Text>
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{statusSummary(status)}</Text>
+              </View>
+            </View>
+            <View style={styles.softBadge}>
+              <Text style={styles.softBadgeText}>
+                {modelDisplayName(MODEL)}
+              </Text>
+            </View>
+          </View>
 
-        <View style={styles.actions}>
-          <Pressable
-            disabled={busy}
-            onPress={generateOnly}
-            style={[styles.button, busy && styles.buttonDisabled]}
-          >
-            <Text style={styles.buttonText}>Generate</Text>
-          </Pressable>
-          <Pressable
-            disabled={busy}
-            onPress={speak}
-            style={[styles.button, styles.primaryButton, busy && styles.buttonDisabled]}
-          >
-            <Text style={[styles.buttonText, styles.primaryButtonText]}>
-              Speak
-            </Text>
-          </Pressable>
+          <View style={styles.panel}>
+            <Text style={styles.label}>Text</Text>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              editable={!busy}
+              multiline
+              placeholder="Type a sentence"
+              placeholderTextColor="#8D8D93"
+              style={styles.input}
+            />
+          </View>
+
+          <View style={styles.panel}>
+            <Text style={styles.label}>Voice</Text>
+            <View style={styles.options}>
+              {ALL_VOICES.map(item => (
+                <Pressable
+                  key={item}
+                  disabled={busy}
+                  onPress={() => setVoice(item)}
+                  style={[
+                    styles.option,
+                    voice === item && styles.optionSelected,
+                    busy && styles.disabled,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.optionText,
+                      voice === item && styles.optionTextSelected,
+                    ]}>
+                    {voiceDisplayName(item)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.actionGroup}>
+            <Text style={styles.actionGroupLabel}>Playback</Text>
+            <View style={styles.actions}>
+              <Pressable
+                disabled={busy}
+                onPress={generateOnly}
+                style={[styles.button, busy && styles.disabled]}>
+                <Text style={styles.buttonText}>Generate</Text>
+              </Pressable>
+              <Pressable
+                disabled={busy}
+                onPress={speak}
+                style={[
+                  styles.button,
+                  styles.primaryButton,
+                  busy && styles.disabled,
+                ]}>
+                <Text style={[styles.buttonText, styles.primaryButtonText]}>
+                  Speak
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <StatusView status={status} />
+
+          {result ? (
+            <ResultCard result={result} activeWordIndex={activeWordIndex} />
+          ) : null}
+
+          <Text style={styles.disclaimer}>
+            This system is for demonstration purposes only and is not intended
+            to process sensitive or personal data.
+          </Text>
         </View>
-
-        {result ? (
-          <ResultCard result={result} activeWordIndex={activeWordIndex} />
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -222,7 +254,8 @@ export default function App() {
     highlightTimerRef.current = setInterval(() => {
       const elapsedSeconds = (Date.now() - startedAt) / 1000;
       const active = wordTimings.find(
-        item => elapsedSeconds >= item.startTime && elapsedSeconds < item.endTime,
+        item =>
+          elapsedSeconds >= item.startTime && elapsedSeconds < item.endTime,
       );
       setActiveWordIndex(active?.wordIndex ?? null);
     }, 50);
@@ -271,9 +304,9 @@ function ResultCard({
                 key={`transcript-${item.wordIndex}-${item.word}`}
                 style={[
                   styles.transcriptWord,
-                  activeWordIndex === item.wordIndex && styles.transcriptWordActive,
-                ]}
-              >
+                  activeWordIndex === item.wordIndex &&
+                    styles.transcriptWordActive,
+                ]}>
                 {item.word}
                 {index < transcriptWords.length - 1 ? ' ' : ''}
               </Text>
@@ -281,28 +314,27 @@ function ResultCard({
           </Text>
 
           <View style={styles.timingList}>
-            {timings.map((item) => (
+            {timings.map(item => (
               <View
                 key={`${item.wordIndex}-${item.word}`}
                 style={[
                   styles.timingRow,
                   activeWordIndex === item.wordIndex && styles.timingRowActive,
-                ]}
-              >
+                ]}>
                 <Text
                   style={[
                     styles.timingWord,
-                    activeWordIndex === item.wordIndex && styles.timingWordActive,
-                  ]}
-                >
+                    activeWordIndex === item.wordIndex &&
+                      styles.timingWordActive,
+                  ]}>
                   {item.word}
                 </Text>
                 <Text
                   style={[
                     styles.timingTime,
-                    activeWordIndex === item.wordIndex && styles.timingTimeActive,
-                  ]}
-                >
+                    activeWordIndex === item.wordIndex &&
+                      styles.timingTimeActive,
+                  ]}>
                   {item.startTime.toFixed(2)}s - {item.endTime.toFixed(2)}s
                 </Text>
               </View>
@@ -319,7 +351,22 @@ function ResultCard({
   );
 }
 
-function StatusView({ status }: { status: Status }) {
+function statusSummary(status: Status): string {
+  switch (status.kind) {
+    case 'idle':
+      return status.message.includes('Ready') ? 'Ready' : 'Loaded';
+    case 'preparing':
+      return 'Preparing';
+    case 'loading':
+      return `${Math.round(status.progress * 100)}%`;
+    case 'working':
+      return 'Working';
+    case 'error':
+      return 'Error';
+  }
+}
+
+function StatusView({status}: {status: Status}) {
   if (status.kind === 'preparing') {
     return (
       <View style={styles.status}>
@@ -341,13 +388,13 @@ function StatusView({ status }: { status: Status }) {
   }
 
   return (
-    <View style={[styles.status, status.kind === 'error' && styles.errorStatus]}>
+    <View
+      style={[styles.status, status.kind === 'error' && styles.errorStatus]}>
       <Text
         style={[
           styles.statusText,
           status.kind === 'error' && styles.errorStatusText,
-        ]}
-      >
+        ]}>
         {status.message}
       </Text>
     </View>
@@ -374,46 +421,112 @@ function friendlyError(error: unknown): string {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F6F7F9',
+    backgroundColor: '#FAFAFA',
   },
   content: {
-    gap: 16,
-    padding: 20,
+    alignSelf: 'center',
+    maxWidth: 430,
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingTop: 24,
+    paddingBottom: 40,
   },
   header: {
-    gap: 6,
-    paddingTop: 12,
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  logoMark: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 48,
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+    width: 48,
+  },
+  logoImage: {
+    height: 48,
+    width: 48,
+  },
+  headerCopy: {
+    flex: 1,
   },
   title: {
-    color: '#111827',
-    fontSize: 28,
+    color: '#09090B',
+    fontSize: 30,
     fontWeight: '700',
+    lineHeight: 32,
   },
   subtitle: {
-    color: '#5B6472',
-    fontSize: 15,
-    lineHeight: 21,
+    color: '#71717A',
+    fontSize: 16,
+    lineHeight: 22,
+    marginTop: 6,
   },
-  panel: {
-    gap: 10,
-  },
-  label: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  value: {
-    color: '#111827',
-    fontSize: 17,
-  },
-  input: {
-    minHeight: 110,
-    borderColor: '#D5DAE1',
+  demoCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E4E4E7',
     borderRadius: 8,
     borderWidth: 1,
-    color: '#111827',
-    fontSize: 16,
+    padding: 16,
+  },
+  modelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  modelRowLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: 8,
+  },
+  modelRowLabel: {
+    color: '#09090B',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pill: {
+    backgroundColor: '#F4F4F5',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  pillText: {
+    color: '#52525B',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  softBadge: {
+    backgroundColor: '#F4F4F5',
+    borderRadius: 8,
+    flexShrink: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  softBadgeText: {
+    color: '#09090B',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  panel: {
+    marginBottom: 18,
+  },
+  label: {
+    color: '#52525B',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  input: {
+    minHeight: 122,
+    borderColor: '#E4E4E7',
+    borderRadius: 8,
+    borderWidth: 1,
+    color: '#09090B',
+    fontSize: 15,
     lineHeight: 22,
     padding: 12,
     textAlignVertical: 'top',
@@ -425,44 +538,50 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   option: {
-    borderColor: '#CAD1DB',
+    backgroundColor: '#F4F4F5',
     borderRadius: 8,
-    borderWidth: 1,
+    minHeight: 38,
+    justifyContent: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    backgroundColor: '#FFFFFF',
   },
   optionSelected: {
-    borderColor: '#1F6FEB',
-    backgroundColor: '#EAF2FF',
+    backgroundColor: '#D4D4D8',
   },
   optionText: {
-    color: '#1F2937',
+    color: '#52525B',
     fontSize: 14,
     fontWeight: '600',
   },
   optionTextSelected: {
-    color: '#174EA6',
+    color: '#09090B',
+  },
+  actionGroup: {
+    backgroundColor: '#F4F4F5',
+    borderRadius: 8,
+    marginTop: 2,
+    padding: 10,
+  },
+  actionGroupLabel: {
+    color: '#52525B',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   status: {
     alignItems: 'center',
-    borderColor: '#D5DAE1',
-    borderRadius: 8,
-    borderWidth: 1,
     flexDirection: 'row',
     gap: 10,
-    minHeight: 48,
-    padding: 12,
-    backgroundColor: '#FFFFFF',
+    marginTop: 16,
   },
   errorStatus: {
-    borderColor: '#F2B8B5',
-    backgroundColor: '#FFF1F1',
+    alignItems: 'flex-start',
   },
   statusText: {
-    color: '#344054',
+    color: '#854D0E',
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   errorStatusText: {
     color: '#B42318',
@@ -473,72 +592,75 @@ const styles = StyleSheet.create({
   },
   button: {
     alignItems: 'center',
-    borderColor: '#1F2937',
+    backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    borderWidth: 1,
     flex: 1,
-    minHeight: 48,
+    minHeight: 46,
     justifyContent: 'center',
     paddingHorizontal: 14,
-    backgroundColor: '#FFFFFF',
   },
   primaryButton: {
-    borderColor: '#1F6FEB',
-    backgroundColor: '#1F6FEB',
-  },
-  buttonDisabled: {
-    opacity: 0.55,
+    backgroundColor: '#18181B',
   },
   buttonText: {
-    color: '#111827',
-    fontSize: 16,
+    color: '#09090B',
+    fontSize: 15,
     fontWeight: '700',
   },
   primaryButtonText: {
     color: '#FFFFFF',
   },
+  disabled: {
+    opacity: 0.48,
+  },
+  disclaimer: {
+    color: '#71717A',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 16,
+  },
   result: {
-    borderColor: '#D5DAE1',
+    backgroundColor: '#FAFAFA',
+    borderColor: '#E4E4E7',
     borderRadius: 8,
     borderWidth: 1,
     gap: 14,
-    padding: 14,
-    backgroundColor: '#FFFFFF',
+    marginTop: 18,
+    padding: 12,
   },
   resultTitle: {
-    color: '#111827',
-    fontSize: 18,
-    fontWeight: '800',
+    color: '#09090B',
+    fontSize: 16,
+    fontWeight: '700',
   },
   resultGrid: {
     flexDirection: 'row',
     gap: 28,
   },
   resultLabel: {
-    color: '#5B6472',
+    color: '#71717A',
     fontSize: 13,
   },
   resultValue: {
-    color: '#111827',
-    fontSize: 18,
+    color: '#09090B',
+    fontSize: 17,
     fontWeight: '700',
   },
   timingsTitle: {
-    color: '#374151',
-    fontSize: 13,
+    color: '#52525B',
+    fontSize: 12,
     fontWeight: '700',
-    textTransform: 'uppercase',
   },
   transcript: {
-    color: '#111827',
+    color: '#09090B',
     fontSize: 16,
     lineHeight: 30,
   },
   transcriptWord: {
-    color: '#111827',
+    color: '#09090B',
   },
   transcriptWordActive: {
-    backgroundColor: '#1F6FEB',
+    backgroundColor: '#18181B',
     color: '#FFFFFF',
     fontWeight: '800',
   },
@@ -547,7 +669,7 @@ const styles = StyleSheet.create({
   },
   timingRow: {
     alignItems: 'center',
-    borderColor: '#E4E7EC',
+    borderColor: '#E4E4E7',
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -557,29 +679,29 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   timingRowActive: {
-    borderColor: '#1F6FEB',
-    backgroundColor: '#EAF2FF',
+    borderColor: '#D4D4D8',
+    backgroundColor: '#F4F4F5',
   },
   timingWord: {
-    color: '#111827',
+    color: '#09090B',
     flex: 1,
     fontSize: 14,
     fontWeight: '700',
   },
   timingWordActive: {
-    color: '#174EA6',
+    color: '#09090B',
   },
   timingTime: {
-    color: '#475467',
+    color: '#52525B',
     fontSize: 13,
     fontVariant: ['tabular-nums'],
   },
   timingTimeActive: {
-    color: '#174EA6',
+    color: '#09090B',
     fontWeight: '700',
   },
   emptyTimings: {
-    color: '#667085',
+    color: '#71717A',
     fontSize: 14,
     lineHeight: 20,
   },
