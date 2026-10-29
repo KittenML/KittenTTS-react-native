@@ -22,6 +22,10 @@ Main flow:
 - `src/KittenTTS.ts`: main SDK class and lifecycle.
 - `src/KittenTTSConfig.ts`: user config and defaults.
 - `src/*.web.ts`: React Native Web entrypoints and platform-specific browser implementations.
+  Each one needs an entry in `package.json` under `browser` (native file to web
+  file) **and** under `react-native` (native file to itself). Metro reads
+  `browser` on iOS and Android too, so without the second entry the web file is
+  bundled into native apps and bundling fails. A test enforces the pairing.
 - `src/KittenTTSError.ts`: SDK error codes and helpers.
 - `src/KittenModel.ts`: model names, download URLs, sizes, speed priors.
 - `src/KittenVoice.ts`: voice enum and display helpers.

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed native bundling: the `browser` map added with web support also applied
+  on iOS and Android, so Metro bundled the web files and failed with
+  "Unable to resolve module node:fs/promises".
 - Added Swift-parity word timing metadata via `KittenTTSResult.wordTimings`.
 - Added `KittenTTS.generateStreaming()` for sentence-by-sentence generation.
 - Added `tts.play(result)` so apps can inspect timings before playback.

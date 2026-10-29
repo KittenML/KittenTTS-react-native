@@ -16,6 +16,17 @@
     "./lib/phonemizer/CEPhonemizer.js": "./lib/phonemizer/CEPhonemizer.web.js",
     "./lib/tiny/platform.js": "./lib/tiny/platform.web.js"
   },
+  "react-native": {
+    "./lib/index.js": "./lib/index.js",
+    "./lib/KittenTTS.js": "./lib/KittenTTS.js",
+    "./lib/KittenTTSBundledAssets.js": "./lib/KittenTTSBundledAssets.js",
+    "./lib/KittenTTSConfig.js": "./lib/KittenTTSConfig.js",
+    "./lib/audio/AudioOutput.js": "./lib/audio/AudioOutput.js",
+    "./lib/engine/TTSEngine.js": "./lib/engine/TTSEngine.js",
+    "./lib/loader/ModelDownloader.js": "./lib/loader/ModelDownloader.js",
+    "./lib/loader/NPZLoader.js": "./lib/loader/NPZLoader.js",
+    "./lib/phonemizer/CEPhonemizer.js": "./lib/phonemizer/CEPhonemizer.js"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
