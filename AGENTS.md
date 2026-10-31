@@ -62,6 +62,11 @@ prefer editing `src/` and rebuilding.
 
 - Runtime dependencies are `onnxruntime-react-native`,
   `@dr.pogodin/react-native-fs` via the `react-native-fs` alias, and `pako`.
+- `react-native-fs` stays below 2.41.0: 2.41 needs React Native 0.88 (its codegen
+  spec uses `ArrayBuffer`), so newer versions break `pod install` on older apps.
+- `onnxruntime-react-native` 1.24 casts to `RCTCxxBridge`, which React Native
+  0.88 removed; the postinstall patch replaces that cast. Check both Expo SDK 55
+  and the newest SDK build after changing either dependency.
 - Playback is optional. Users must pass either `createExpoAudioPlayer()` with
   `expo-audio`, `createRNSoundPlayer()` with `react-native-sound`, or their own
   `AudioPlayer`.

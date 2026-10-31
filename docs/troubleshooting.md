@@ -61,6 +61,16 @@ The package runs `scripts/patch-onnxruntime-react-native.js` during
 `postinstall` to apply known compatibility fixes for
 `onnxruntime-react-native`.
 
+Some package managers skip a dependency's install scripts unless you allow them
+(pnpm 10's `onlyBuiltDependencies`, Bun's `trustedDependencies`). Without the
+patch, iOS builds on React Native 0.88 (Expo SDK 58) fail with
+`unknown type name 'RCTCxxBridge'`. Allow `@kittentts/react-native`'s script, or
+run it from the app's root after installing, then rerun `pod install`:
+
+```bash
+node node_modules/@kittentts/react-native/scripts/patch-onnxruntime-react-native.js
+```
+
 On Android, the SDK's own `android/` package registers ONNX Runtime. This avoids
 the common `Cannot read property 'install' of null` crash when ONNX Runtime is
 compiled but not added to `MainApplication`.

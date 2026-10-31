@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PATCH_MARKER = 'KITTEN_TTS_RELOAD_SAFE_ONNXRUNTIME';
+const BRIDGE_RUNTIME_MARKER = 'KITTEN_TTS_RN_088_ONNXRUNTIME';
 const ANDROID_GRADLE_MARKER = 'KITTEN_TTS_GRADLE_9_ONNXRUNTIME';
 
 function findOrtPackageRoot() {
@@ -96,6 +97,60 @@ function patchOnnxruntimeModule(filePath) {
   return true;
 }
 
+function patchOnnxruntimeBridgeRuntime(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
+  let source = fs.readFileSync(filePath, 'utf8');
+  if (source.includes(BRIDGE_RUNTIME_MARKER)) {
+    return true;
+  }
+
+  const implementationNeedle = '@implementation OnnxruntimeModule\n';
+  const runtimeNeedle =
+    '    RCTCxxBridge* cxxBridge = (RCTCxxBridge*)_bridge;\n' +
+    '    if (cxxBridge == nil) {\n' +
+    '      return @false;\n' +
+    '    }\n' +
+    '\n' +
+    '    auto jsiRuntime = (facebook::jsi::Runtime*)cxxBridge.runtime;\n';
+
+  if (!source.includes(implementationNeedle) || !source.includes(runtimeNeedle)) {
+    console.warn(
+      '[@kittentts/react-native] Skipped ONNX Runtime React Native 0.88 patch: unrecognized source layout.',
+    );
+    return false;
+  }
+
+  // React Native 0.88 removed the RCTCxxBridge class, so the cast to it no
+  // longer compiles. The object behind _bridge (RCTBridgeProxy in the new
+  // architecture, RCTCxxBridge before 0.88) still answers -runtime, so reach it
+  // through a protocol instead: the same message on every version.
+  source = source.replace(
+    implementationNeedle,
+    `// ${BRIDGE_RUNTIME_MARKER}: React Native 0.88 removed RCTCxxBridge; the bridge\n` +
+    '// still answers -runtime.\n' +
+    '@protocol KittenTTSJSIRuntimeProvider\n' +
+    '- (void *)runtime;\n' +
+    '@end\n' +
+    '\n' +
+    implementationNeedle,
+  );
+  source = source.replace(
+    runtimeNeedle,
+    '    id<KittenTTSJSIRuntimeProvider> runtimeProvider = (id<KittenTTSJSIRuntimeProvider>)_bridge;\n' +
+    '    if (runtimeProvider == nil) {\n' +
+    '      return @false;\n' +
+    '    }\n' +
+    '\n' +
+    '    auto jsiRuntime = (facebook::jsi::Runtime*)[runtimeProvider runtime];\n',
+  );
+
+  fs.writeFileSync(filePath, source);
+  return true;
+}
+
 function patchOnnxruntimeAndroidBuildGradle(filePath) {
   if (!fs.existsSync(filePath)) {
     return false;
@@ -124,20 +179,35 @@ function patchOnnxruntimeAndroidBuildGradle(filePath) {
   return true;
 }
 
-const ortRoot = findOrtPackageRoot();
-if (!ortRoot) {
-  console.warn(
-    '[@kittentts/react-native] Skipped ONNX Runtime iOS reload patch: onnxruntime-react-native not found.',
-  );
-  process.exit(0);
+function main() {
+  const ortRoot = findOrtPackageRoot();
+  if (!ortRoot) {
+    console.warn(
+      '[@kittentts/react-native] Skipped ONNX Runtime iOS reload patch: onnxruntime-react-native not found.',
+    );
+    return;
+  }
+
+  const modulePath = path.join(ortRoot, 'ios', 'OnnxruntimeModule.mm');
+  if (patchOnnxruntimeModule(modulePath)) {
+    console.log('[@kittentts/react-native] Applied ONNX Runtime iOS dev reload patch.');
+  }
+  if (patchOnnxruntimeBridgeRuntime(modulePath)) {
+    console.log('[@kittentts/react-native] Applied ONNX Runtime React Native 0.88 patch.');
+  }
+
+  const androidGradlePath = path.join(ortRoot, 'android', 'build.gradle');
+  if (patchOnnxruntimeAndroidBuildGradle(androidGradlePath)) {
+    console.log('[@kittentts/react-native] Applied ONNX Runtime Android Gradle 9 patch.');
+  }
 }
 
-const modulePath = path.join(ortRoot, 'ios', 'OnnxruntimeModule.mm');
-if (patchOnnxruntimeModule(modulePath)) {
-  console.log('[@kittentts/react-native] Applied ONNX Runtime iOS dev reload patch.');
+if (require.main === module) {
+  main();
 }
 
-const androidGradlePath = path.join(ortRoot, 'android', 'build.gradle');
-if (patchOnnxruntimeAndroidBuildGradle(androidGradlePath)) {
-  console.log('[@kittentts/react-native] Applied ONNX Runtime Android Gradle 9 patch.');
-}
+module.exports = {
+  patchOnnxruntimeBridgeRuntime,
+  patchOnnxruntimeModule,
+  patchOnnxruntimeAndroidBuildGradle,
+};

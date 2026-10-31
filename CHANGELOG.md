@@ -12,6 +12,13 @@
 - `npm run build:phonemizer` links with `em++` (current Emscripten no longer
   links C++ through `emcc`), and `npm run build` also builds espeak-ng.
 
+- Fixed iOS builds on React Native 0.88 (Expo SDK 58), which failed with
+  "unknown type name 'RCTCxxBridge'": the ONNX Runtime postinstall patch now
+  reaches the JavaScript runtime without that class, which React Native 0.88
+  removed.
+- Fixed `pod install` on React Native 0.83 and older, which failed with
+  "Unrecognized generic type 'ArrayBuffer'": `react-native-fs` is kept below
+  2.41.0, which needs React Native 0.88.
 - Fixed native bundling: the `browser` map added with web support also applied
   on iOS and Android, so Metro bundled the web files and failed with
   "Unable to resolve module node:fs/promises".
