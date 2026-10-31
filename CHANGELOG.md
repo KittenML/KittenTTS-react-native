@@ -2,13 +2,20 @@
 
 ## Unreleased
 
+- Added Kitten TTS 2 through the Kitten API:
+  `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
+  with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,
+  plus voice cloning from a `reference` recording, presets, decoding controls and
+  `availableVoices`, like the Python package. Failed requests throw
+  `KittenAPIError`. Existing on-device code is unchanged.
 - Added Kitten TTS 2 Nano, Pico and Mini (`KittenTTS.create({ model:
   'kitten-tts-2-nano' })`): 8 languages (Mini 16), int8 or int4 weights, and
   the Python package's phonemes. They need React Native 0.75+. espeak-ng, used
   for most non-English languages, is GPL-3.0-or-later. See the
   [guide](docs/guides/kitten-tts-2-tiny.md).
 - `KittenTTSResult` takes the voice type as a parameter; `KittenTTSErrorCode`
-  has `INVALID_ARGUMENT` and `UNSUPPORTED_RUNTIME`.
+  has `INVALID_ARGUMENT`, `API_ERROR`, `NETWORK_ERROR`, `CANCELLED` and
+  `UNSUPPORTED_RUNTIME`.
 - `npm run build:phonemizer` links with `em++` (current Emscripten no longer
   links C++ through `emcc`), and `npm run build` also builds espeak-ng.
 

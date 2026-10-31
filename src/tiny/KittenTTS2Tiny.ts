@@ -89,6 +89,9 @@ export interface KittenTTS2TinyOptions {
   player?: AudioPlayer;
   /** For tests and custom hosts: ONNX Runtime and a file store to use instead of the platform's. */
   platform?: TinyPlatform;
+  /** With an API key or a base URL the model runs through the Kitten API instead ({@link KittenTTS2}). */
+  apiKey?: never;
+  baseUrl?: never;
 }
 
 export interface KittenTTS2TinyGenerateOptions {

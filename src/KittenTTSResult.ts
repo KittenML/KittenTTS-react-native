@@ -8,6 +8,9 @@ import type { KittenWordTiming } from './KittenWordTiming';
  *
  * Contains raw PCM audio samples and metadata. Use {@link wavData} to encode
  * as a standard WAV file, or access {@link samples} for raw Float32 PCM.
+ *
+ * `V` is the voice type: {@link KittenVoice} on device, a voice ID string for
+ * Kitten TTS 2 through the Kitten API.
  */
 export class KittenTTSResult<V extends string = KittenVoice> {
   /** Raw Float32 PCM samples at {@link sampleRate} Hz, mono channel. */

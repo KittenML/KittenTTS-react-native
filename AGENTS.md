@@ -26,7 +26,16 @@ Main flow:
   file) **and** under `react-native` (native file to itself). Metro reads
   `browser` on iOS and Android too, so without the second entry the web file is
   bundled into native apps and bundling fails. A test enforces the pairing.
-- `src/KittenTTSError.ts`: SDK error codes and helpers.
+- `src/KittenTTSError.ts`: SDK error codes and helpers, including `KittenAPIError`
+  for the Kitten API.
+- `src/KittenTTS2.ts` / `src/KittenTTS2.web.ts`: Kitten TTS 2 through the hosted
+  Kitten API. `KittenTTS.create()` returns one for `model: 'kitten-tts-2'`. They
+  only wire in the platform's `AudioOutput` and file reading; the logic is in
+  `src/api/KittenTTS2Base.ts` (requests, cloning uploads, voice listing) and
+  `src/api/KittenAPI.ts` (fetch, retries, errors), which run in Node so
+  `tests/kitten-tts-2.test.js` can test them with a fake `fetch`. Voices, models
+  and API error codes are strings because the API adds them over time: do not
+  validate them client-side.
 - `src/KittenModel.ts`: model names, download URLs, sizes, speed priors.
 - `src/KittenVoice.ts`: voice enum and display helpers.
 - `src/loader/ModelDownloader.ts`: model cache and Hugging Face downloads.
@@ -51,7 +60,13 @@ Use these from the repository root:
 ```bash
 npm run typecheck
 npm run build
+npm test
 ```
+
+`npm run test:live` runs `tests/live/` against the real Kitten API. It is
+skipped unless `KITTENML_API_KEY` is set, and it makes billed requests. Never
+commit a key, and keep credentials in runtime-private (`#`) fields so a logged
+or serialised instance cannot leak them.
 
 `npm run build` writes compiled output to `lib/` and copies the generated
 Emscripten runtimes. Do not hand-edit `lib/` unless the user explicitly asks;

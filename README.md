@@ -63,8 +63,11 @@ KittenTTS React Native lets you add local speech synthesis to a mobile app:
   the native app.
 - **App-friendly output** - play audio directly, save WAV data, or use generated
   word timings for read-aloud UI.
+- **Kitten TTS 2 when you want it** - the larger model, with voice cloning and
+  expression tags, through the Kitten API with the same calls.
 
-No cloud. No API key. No text leaving the device for speech generation.
+With the on-device models: no cloud, no API key, no text leaving the device for
+speech generation.
 
 ---
 
@@ -143,6 +146,42 @@ await tts.speak('This voice is generated in the browser.');
 
 ---
 
+## Kitten TTS 2 Through The Kitten API
+
+Kitten TTS 2 is too large to run inside an app, so the SDK runs it on the
+hosted [Kitten API](https://docs.kittenml.com/). It loads through the same
+`KittenTTS.create()` and answers the same calls, like
+`KittenTTS("KittenML/kitten-tts-2")` in the Python package:
+
+```tsx
+import * as ExpoAudio from 'expo-audio';
+import { KittenTTS, createExpoAudioPlayer } from '@kittentts/react-native';
+
+const tts = await KittenTTS.create({
+  model: 'kitten-tts-2',
+  apiKey: KITTENML_API_KEY, // ship with baseUrl and your own backend instead
+  player: createExpoAudioPlayer(ExpoAudio),
+});
+
+await tts.speak('Hi! umm.. how are you, I guess?', 'bella_en');
+
+const cloned = await tts.generate('This sentence uses my voice.', {
+  reference: recordingUri,
+  preset: 'stable',
+});
+
+for await (const chunk of tts.generateStreaming(longText, 'bella_en')) {
+  await tts.play(chunk);
+}
+```
+
+`tts.availableVoices` lists the voice IDs. The text you pass is sent to the API
+and billed to your KittenML account.
+
+[Kitten API guide →](docs/guides/kitten-api.md)
+
+---
+
 ## Expo Setup
 
 Expo Go cannot load the native ONNX Runtime and filesystem modules used by this
@@ -191,6 +230,7 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 - [WAV output](docs/reference/api.md#kittenttsresult) as raw PCM samples, bytes, or base64.
 - [Word timings](docs/guides/word-timings.md) for read-aloud highlighting.
 - [Streaming generation](docs/reference/api.md#ttsgeneratestreamingtext-voice-speed) for longer text.
+- [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md), with voice cloning.
 
 ---
 
@@ -240,6 +280,7 @@ await tts.speak('Slower Bruno speaking.', KittenVoice.Bruno, 0.85);
 - [Docs overview](docs/README.md)
 - [Getting started](docs/getting-started.md)
 - [Playback](docs/guides/playback.md)
+- [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md)
 - [Bundled offline assets](docs/guides/offline-assets.md)
 - [Word timings](docs/guides/word-timings.md)
 - [Kitten TTS 2 Nano, Pico and Mini](docs/guides/kitten-tts-2-tiny.md)
