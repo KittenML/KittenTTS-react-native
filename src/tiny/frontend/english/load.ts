@@ -50,7 +50,7 @@ export async function loadEnglishG2P(
   ]);
   const taggerModel = reader.path?.('en/spacy-tagger.onnx') ?? (await reader.bytes('en/spacy-tagger.onnx'));
   const tagger = await SpacyTagger.create(ort, taggerMeta, taggerModel);
-  return new EnglishG2P(
+  const g2p = new EnglishG2P(
     {
       golds,
       silvers,
@@ -61,4 +61,8 @@ export async function loadEnglishG2P(
     },
     vocab,
   );
+  // One sentence through every stage compiles the tokenizer's patterns and runs the
+  // tagger once, so the first real sentence doesn't pay for it.
+  await g2p.phonemize('Hello there, 2 friends.');
+  return g2p;
 }

@@ -100,6 +100,11 @@ export class TinyFrontend {
     return g;
   }
 
+  /** Load a language's text processing ahead of its first sentence. */
+  async ready(lang: string): Promise<void> {
+    await this.g2p(lang);
+  }
+
   /** text -> the phoneme chunks the model speaks. */
   async phonemize(text: string, lang: string): Promise<string[]> {
     let chunks = await frontEnd(await this.g2p(lang), text || '');

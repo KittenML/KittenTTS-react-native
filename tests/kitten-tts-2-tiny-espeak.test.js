@@ -19,8 +19,8 @@ const path = require('node:path');
 const fixtures = require('./fixtures/kitten-tts-2-tiny-espeak.json');
 
 const runtime = path.join(__dirname, '..', 'lib', 'tiny', 'frontend', 'espeak', 'generated', 'espeakng-runtime.js');
-const dataRoot = process.env.KITTENTTS_ESPEAK_DATA
-  ? path.resolve(process.env.KITTENTTS_ESPEAK_DATA)
+const dataRoot = (process.env.KITTENTTS_ESPEAK_DATA || process.env.KITTEN_TTS_2_TINY_DATA)
+  ? path.resolve(process.env.KITTENTTS_ESPEAK_DATA || process.env.KITTEN_TTS_2_TINY_DATA)
   : path.join(os.homedir(), '.cache', 'kittentts-espeak-ng', 'data-1.52.0');
 const dataDir = fs.existsSync(path.join(dataRoot, 'espeak-ng-data'))
   ? path.join(dataRoot, 'espeak-ng-data')

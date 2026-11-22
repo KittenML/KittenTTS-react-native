@@ -24,6 +24,8 @@ export interface BartConfig {
 
 type Tensors = Record<string, Float32Array>;
 
+const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+
 /** Parse a .safetensors file holding float32 tensors. */
 export function parseSafetensors(bytes: Uint8Array): Tensors {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -37,6 +39,11 @@ export function parseSafetensors(bytes: Uint8Array): Tensors {
     if (name === '__metadata__') continue;
     if (info.dtype !== 'F32') throw new Error(`unsupported dtype ${info.dtype} for ${name}`);
     const [a, b] = info.data_offsets;
+    if (LITTLE_ENDIAN) {
+      // A copy starts at offset 0, so the view is aligned.
+      out[name] = new Float32Array(bytes.slice(base + a, base + b).buffer);
+      continue;
+    }
     const n = (b - a) / 4;
     const arr = new Float32Array(n);
     for (let i = 0; i < n; i++) arr[i] = view.getFloat32(base + a + i * 4, true);

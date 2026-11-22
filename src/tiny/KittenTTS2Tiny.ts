@@ -7,8 +7,8 @@ import { KittenTTSError, errorMessage, isKittenTTSError } from '../KittenTTSErro
 import { KittenTTSResult } from '../KittenTTSResult';
 import type { AudioPlayer, AudioPlayOptions, AudioOutput } from '../audio/AudioOutput';
 import type { ProgressHandler } from '../loader/ModelDownloader';
-import { loadNPZData } from '../loader/NPZLoader.web';
-import type { VoiceEmbeddings } from '../loader/NPZLoader.web';
+import { loadNPZData } from '../loader/NPZParser';
+import type { VoiceEmbeddings } from '../loader/NPZParser';
 import type { AssetRequest, TinyAssetStore } from './assets';
 import { TinyFrontend } from './frontend/Frontend';
 import { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES, loadEnglishG2P } from './frontend/english/load';
@@ -367,6 +367,9 @@ export class KittenTTS2Tiny {
         await Promise.all([
           this.synth.prepare(modelFiles(entry)[this.weights] as string),
           this.pack(lang),
+          // English's lexicons and tagger take a few seconds to load on a phone:
+          // better in create() than in the first generate().
+          this.frontend.ready(lang),
         ]);
       })();
       p.catch(() => this.prepared.delete(lang));

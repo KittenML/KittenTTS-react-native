@@ -4,7 +4,7 @@
 // pause, except for the first chunk), 5 ms fades and clipping.
 
 import type { OrtLike, OrtSessionLike } from './ort';
-import type { VoiceEmbedding } from '../loader/NPZLoader.web';
+import type { VoiceEmbedding } from '../loader/NPZParser';
 
 export const END_TOKEN = 10;
 export const GAP_SECONDS = 0.15;
