@@ -5,63 +5,30 @@
 // land on either side in another ONNX Runtime build (5.50024 in Python's, just under 5.5
 // in onnxruntime-web), so one or two tokens may be one frame (600 samples) off.
 //
-// Needs local files, no network:
-//   KITTEN_TTS_2_TINY_DATA    the text data folder (en/..., espeak-ng-data/...)
-//   KITTEN_TTS_2_TINY_MODELS  a folder holding kitten-tts-2-nano/, -pico/, -mini/ laid out like
-//                             the Hugging Face repositories (default: the Hugging Face cache)
+// Needs local files, no network: KITTEN_TTS_2_TINY_DATA and the model repositories (see
+// tests/helpers/tiny-data.js). They are read through modelDirectory and textDataDirectory,
+// so this also covers loading from local folders and gzipped text data.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
+const data = require('./helpers/tiny-data');
 
-const DATA = process.env.KITTEN_TTS_2_TINY_DATA;
 const FIXTURE = path.join(__dirname, 'fixtures', 'kitten-tts-2-tiny-synth.json');
-
-function modelDir(name) {
-  if (process.env.KITTEN_TTS_2_TINY_MODELS) return path.join(process.env.KITTEN_TTS_2_TINY_MODELS, name);
-  const snaps = path.join(os.homedir(), '.cache', 'huggingface', 'hub', `models--KittenML--${name}`, 'snapshots');
-  if (!fs.existsSync(snaps)) return null;
-  const revs = fs.readdirSync(snaps);
-  return revs.length ? path.join(snaps, revs[0]) : null;
-}
-
-/** A store over local folders: key "<folder>/<file>" -> roots[folder]/<file>. */
-function dirStore(roots) {
-  const local = key => {
-    const [top, ...rest] = key.split('/');
-    if (!roots[top]) throw new Error(`no local folder for ${key}`);
-    return path.join(roots[top], ...rest);
-  };
-  return {
-    async ensure(files) {
-      const missing = files.filter(f => !fs.existsSync(local(f.key))).map(f => f.key);
-      if (missing.length) throw new Error(`missing local files: ${missing.join(', ')}`);
-    },
-    async has(key) { return fs.existsSync(local(key)); },
-    async text(key) { return fs.readFileSync(local(key), 'utf8'); },
-    async bytes(key) { return new Uint8Array(fs.readFileSync(local(key))); },
-    async clear() {},
-  };
-}
 
 const { cases } = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 
 for (const c of cases) {
   const name = `${c.model} ${c.weights} ${c.language}: ${c.text.slice(0, 40)}`;
-  const dir = modelDir(c.model);
-  const espeakNeeded = c.language !== 'en';
-  const skip = !DATA ? 'set KITTEN_TTS_2_TINY_DATA'
-    : !dir ? `no local ${c.model}`
-      : espeakNeeded && !fs.existsSync(path.join(DATA, 'espeak-ng-data', 'phontab')) ? 'no espeak-ng-data in KITTEN_TTS_2_TINY_DATA'
-        : false;
+  const dir = data.modelDir(c.model);
+  const skip = !data.has(data.textDir, 'manifest.json') ? 'set KITTEN_TTS_2_TINY_DATA'
+    : !dir ? `no local ${c.model}` : false;
   test(name, { skip }, async () => {
-    const ort = require('onnxruntime-web');
     const { KittenTTS2Tiny } = require('../lib/tiny/KittenTTS2Tiny');
-    const store = dirStore({ [c.model]: dir, 'kitten-tts-2-text-v1': DATA });
     const tts = await KittenTTS2Tiny.create({
-      model: c.model, weights: c.weights, languages: [c.language], platform: { ort, store },
+      model: c.model, weights: c.weights, languages: [c.language], platform: await data.nodePlatform(),
+      modelDirectory: dir, textDataDirectory: data.textDir,
     });
     try {
       assert.deepEqual(tts.resolveVoice(c.voice ?? undefined, c.language), c.resolved);

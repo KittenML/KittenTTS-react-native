@@ -3,11 +3,11 @@
 
 import * as RNFS from 'react-native-fs';
 import { KittenTTSError, errorMessage } from '../KittenTTSError';
-import { base64ToUint8Array } from '../audio/Base64';
 import type { ProgressHandler } from '../loader/ModelDownloader';
 import type { OrtLike } from './ort';
 import type { AssetRequest, TinyAssetStore } from './assets';
-import { aggregateProgress, inBatches } from './assets';
+import { aggregateProgress, inBatches, readOnlyStore, unpack } from './assets';
+import { utf8Decode } from './frontend/english/hash';
 
 export interface TinyPlatformOptions {
   storageDirectory?: string;
@@ -20,12 +20,77 @@ export interface TinyPlatform {
 }
 
 const RETRY_DELAY_MS = 750;
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+declare const atob: ((data: string) => string) | undefined;
+declare const btoa: ((data: string) => string) | undefined;
+declare function escape(s: string): string;
+
+/** Base64 -> "binary string" (one char per byte). Hermes's atob is native and fast. */
+function binaryString(b64: string): string {
+  if (typeof atob === 'function') return atob(b64);
+  const lut = new Uint8Array(128);
+  for (let i = 0; i < 64; i++) lut[B64.charCodeAt(i)] = i;
+  const clean = b64.replace(/[^A-Za-z0-9+/]/g, '');
+  const parts: string[] = [];
+  for (let i = 0; i < clean.length; i += 4) {
+    const n = (lut[clean.charCodeAt(i)] << 18) | (lut[clean.charCodeAt(i + 1)] << 12)
+      | (lut[clean.charCodeAt(i + 2)] << 6) | lut[clean.charCodeAt(i + 3)];
+    const left = clean.length - i;
+    parts.push(String.fromCharCode(n >> 16, (n >> 8) & 255, n & 255).slice(0, left >= 4 ? 3 : left - 1));
+  }
+  return parts.join('');
+}
+
+function bytesOf(bin: string): Uint8Array {
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += 8192) {
+    parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 8192) as unknown as number[]));
+  }
+  const bin = parts.join('');
+  if (typeof btoa === 'function') return btoa(bin);
+  let out = '';
+  for (let i = 0; i < bin.length; i += 3) {
+    const n = (bin.charCodeAt(i) << 16) | ((bin.charCodeAt(i + 1) || 0) << 8) | (bin.charCodeAt(i + 2) || 0);
+    out += B64[n >> 18] + B64[(n >> 12) & 63] + (i + 1 < bin.length ? B64[(n >> 6) & 63] : '=')
+      + (i + 2 < bin.length ? B64[n & 63] : '=');
+  }
+  return out;
+}
+
+/**
+ * A UTF-8 file as a string. react-native-fs's own utf8 reading decodes base64 and UTF-8
+ * in JavaScript (a Buffer polyfill), seconds for the English lexicons on a phone; atob
+ * plus decodeURIComponent(escape(...)) does it natively in about 0.1 s.
+ */
+async function readText(path: string): Promise<string> {
+  const bin = binaryString(await RNFS.readFile(path, 'base64'));
+  try {
+    return decodeURIComponent(escape(bin));
+  } catch {
+    return utf8Decode(bytesOf(bin));
+  }
+}
+
+async function readBytes(path: string): Promise<Uint8Array> {
+  return bytesOf(binaryString(await RNFS.readFile(path, 'base64')));
+}
 
 class RNFSAssetStore implements TinyAssetStore {
   constructor(private readonly root: string, private readonly retries: number) {}
 
-  path(key: string): string {
+  private path(key: string): string {
     return `${this.root}/${key}`;
+  }
+
+  async filePath(key: string): Promise<string | undefined> {
+    return (await RNFS.exists(this.path(key))) ? this.path(key) : undefined;
   }
 
   has(key: string): Promise<boolean> {
@@ -50,6 +115,7 @@ class RNFSAssetStore implements TinyAssetStore {
         const job = RNFS.downloadFile({
           fromUrl: f.url,
           toFile: temp,
+          headers: f.headers,
           progressDivider: 1,
           connectionTimeout: 30_000,
           readTimeout: 30_000,
@@ -58,6 +124,13 @@ class RNFSAssetStore implements TinyAssetStore {
         });
         const res = await job.promise;
         if (res.statusCode !== 200) throw new Error(`HTTP ${res.statusCode} downloading ${f.url}`);
+        if (f.gzip) {
+          // Unpacked once here, so every later load reads the plain file.
+          await RNFS.writeFile(temp, toBase64(unpack(f, await readBytes(temp))), 'base64');
+        } else if (f.size !== undefined) {
+          const stat = await RNFS.stat(temp);
+          if (Number(stat.size) !== f.size) throw new Error(`${f.url}: expected ${f.size} bytes, got ${stat.size}`);
+        }
         await RNFS.moveFile(temp, target);
         return;
       } catch (error) {
@@ -70,15 +143,25 @@ class RNFSAssetStore implements TinyAssetStore {
   }
 
   text(key: string): Promise<string> {
-    return RNFS.readFile(this.path(key), 'utf8');
+    return readText(this.path(key));
   }
 
-  async bytes(key: string): Promise<Uint8Array> {
-    return base64ToUint8Array(await RNFS.readFile(this.path(key), 'base64'));
+  bytes(key: string): Promise<Uint8Array> {
+    return readBytes(this.path(key));
   }
 
   async clear(prefix: string): Promise<void> {
     await RNFS.unlink(this.path(prefix)).catch(() => {});
+  }
+
+  local(directory: string): TinyAssetStore {
+    const dir = directory.replace(/^file:\/\//, '').replace(/\/+$/, '');
+    return readOnlyStore(key => `${dir}/${key}`, p => RNFS.exists(p), { text: readText, bytes: readBytes },
+      b => utf8Decode(b), this, true);
+  }
+
+  async writeFile(path: string, data: Uint8Array): Promise<void> {
+    await RNFS.writeFile(path.replace(/^file:\/\//, ''), toBase64(data), 'base64');
   }
 }
 

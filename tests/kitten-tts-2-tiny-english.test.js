@@ -1,35 +1,31 @@
 // The TypeScript English front end against the Python package's output
 // (tests/fixtures/kitten-tts-2-tiny-english.json, from tools/kitten-tts-2-tiny/english_fixtures.py).
 //
-// It needs the text pack and the g2p/ folder in one directory:
-//   KITTEN_TTS_2_TINY_DATA=/path/with/en-and-g2p npm test
-// and skips without it. KITTEN_TTS_2_TINY_ENGLISH_FIXTURE points at another fixture file.
+// Needs KITTEN_TTS_2_TINY_DATA (the text data folder) and the nano repository in the Hugging
+// Face cache (or KITTEN_TTS_2_TINY_MODELS); skips without them. KITTEN_TTS_2_TINY_ENGLISH_FIXTURE
+// points at another fixture file.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const data = require('./helpers/tiny-data');
 
-const DATA = process.env.KITTEN_TTS_2_TINY_DATA;
 const FIXTURE = process.env.KITTEN_TTS_2_TINY_ENGLISH_FIXTURE
   || path.join(__dirname, 'fixtures', 'kitten-tts-2-tiny-english.json');
-
-function reader(dir) {
-  return {
-    text: async name => fs.readFileSync(path.join(dir, name), 'utf8'),
-    bytes: async name => new Uint8Array(fs.readFileSync(path.join(dir, name))),
-  };
-}
+const nano = data.modelDir('kitten-tts-2-nano');
+const skip = !data.has(data.textDir, 'en/misaki-us-gold.json') ? 'set KITTEN_TTS_2_TINY_DATA'
+  : !nano ? 'no kitten-tts-2-nano in the Hugging Face cache' : false;
 
 async function loadFrontend() {
   const ort = require('onnxruntime-web');
   const { loadEnglishG2P } = require('../lib/tiny/frontend/english/load');
-  const vocab = JSON.parse(fs.readFileSync(path.join(DATA, 'vocab-nano.json'), 'utf8'));
-  const v1 = new Set(Object.keys(vocab).filter(k => k !== 'ʉ'));
-  return loadEnglishG2P(reader(DATA), ort, v1);
+  const vocab = JSON.parse(fs.readFileSync(path.join(nano, 'vocab.json'), 'utf8'));
+  const v1 = new Set(Object.keys(vocab).filter(k => k !== '\u0289'));
+  return loadEnglishG2P(data.englishReader(), ort, v1);
 }
 
-test('English front end matches the Python package', { skip: !DATA && 'set KITTEN_TTS_2_TINY_DATA' }, async () => {
+test('English front end matches the Python package', { skip }, async () => {
   const { cases } = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
   const g2p = await loadFrontend();
   const { normalize } = require('../lib/tiny/frontend/english/TtsNorm');

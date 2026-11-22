@@ -3,13 +3,15 @@
 // (kittenml/kittentts2_tiny/model.py). Same voices, same text front end (phonemes
 // identical to Python's), same synthesis recipe.
 
-import { KittenTTSError, errorMessage, isKittenTTSError } from '../KittenTTSError';
+import { KittenTTSError, KittenTTSErrorCode, errorMessage, isKittenTTSError } from '../KittenTTSError';
 import { KittenTTSResult } from '../KittenTTSResult';
 import type { AudioPlayer, AudioPlayOptions, AudioOutput } from '../audio/AudioOutput';
 import type { ProgressHandler } from '../loader/ModelDownloader';
 import { loadNPZData } from '../loader/NPZParser';
 import type { VoiceEmbeddings } from '../loader/NPZParser';
+import { WAVEncoder } from '../audio/WAVEncoder';
 import type { AssetRequest, TinyAssetStore } from './assets';
+import { routedStore } from './assets';
 import { TinyFrontend } from './frontend/Frontend';
 import { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES, loadEnglishG2P } from './frontend/english/load';
 import { pyLower } from './frontend/english/pystr';
@@ -22,12 +24,36 @@ import { GAP_SECONDS, TinySynth } from './TinySynth';
 
 /**
  * Where the text front end's data lives: misaki's lexicons, spaCy's tokenizer and tagger
- * (en/...) and espeak-ng's data (espeak-ng-data/...), as written by
- * tools/kitten-tts-2-tiny/build_text_pack.sh. Not hosted yet: pass `textDataURL`.
+ * (en/...), espeak-ng's data (espeak-ng-data/...) and a manifest, as written by
+ * tools/kitten-tts-2-tiny/build_text_pack.py.
  */
-export const DEFAULT_TEXT_DATA_URL = 'https://huggingface.co/KittenML/kitten-tts-2-text/resolve/main';
-/** Cache folder of the text data; bump when its files change. */
-const TEXT_DIR = 'kitten-tts-2-text-v1';
+export const DEFAULT_TEXT_DATA_URL = 'https://huggingface.co/dewan-sl/kitten-tts-2-text/resolve/main';
+/** Cache folder of the text data; bump when its format changes. */
+const TEXT_DIR = 'kitten-tts-2-text-v2';
+
+interface TextManifest {
+  version: number;
+  /** Logical file -> its size, and the gzipped copy that is hosted instead when present. */
+  files: Record<string, { size: number; sha256: string; gzip?: { size: number; sha256: string } }>;
+}
+
+/**
+ * The text front end needs Unicode property escapes and \u{...} in regular expressions it
+ * builds at run time, and BigInt: Hermes has them from React Native 0.75.
+ */
+function checkRuntime(): void {
+  try {
+    new RegExp('\\p{L}\\u{1F600}', 'u');
+    BigInt(1);
+  } catch (error) {
+    throw new KittenTTSError(
+      KittenTTSErrorCode.UnsupportedRuntime,
+      'Kitten TTS 2 Nano, Pico and Mini need a JavaScript engine with Unicode regular expressions '
+        + 'and BigInt (Hermes from React Native 0.75 on).',
+      error,
+    );
+  }
+}
 
 export interface KittenTTS2TinyOptions {
   /** `'kitten-tts-2-nano'`, `'kitten-tts-2-pico'` or `'kitten-tts-2-mini'` (or the `KittenML/...` repository). */
@@ -40,8 +66,17 @@ export interface KittenTTS2TinyOptions {
   storageDirectory?: string;
   /** Host of the model files instead of Hugging Face (a folder laid out like the repository). */
   modelBaseURL?: string;
+  /**
+   * A local folder laid out like the repository (config.json, vocab.json, the graphs,
+   * voices_<lang>.npz, g2p/), used instead of downloading: Python's KittenTTS("path/to/dir").
+   */
+  modelDirectory?: string;
   /** Host of the text front end's data. Default: {@link DEFAULT_TEXT_DATA_URL}. */
   textDataURL?: string;
+  /** A local copy of the text data folder (files plain or gzipped), used instead of downloading. */
+  textDataDirectory?: string;
+  /** A Hugging Face token, sent with Hugging Face downloads (private or gated repositories). */
+  hfToken?: string;
   /** Attempts per file. Default 4. */
   downloadRetries?: number;
   /** ONNX Runtime intra-op threads for the speech model. */
@@ -59,6 +94,11 @@ export interface KittenTTS2TinyGenerateOptions {
   language?: string;
   /** Larger is faster. Default 1. */
   speed?: number;
+}
+
+export interface KittenTTS2TinyFileOptions extends KittenTTS2TinyGenerateOptions {
+  /** Sample rate written in the WAV header (Python's sample_rate; the audio is not resampled). */
+  sampleRate?: number;
 }
 
 export interface KittenTTS2TinyVoice {
@@ -108,7 +148,7 @@ export class KittenTTS2Tiny {
     });
     this.synth = new TinySynth(platform.ort, vocab, async file => {
       const key = this.modelKey(file);
-      const model = platform.store.path?.(key) ?? (await platform.store.bytes(key));
+      const model = (await platform.store.filePath?.(key)) ?? (await platform.store.bytes(key));
       return createSession(platform.ort, model, { intraOpNumThreads: options.ortNumThreads });
     });
   }
@@ -118,13 +158,20 @@ export class KittenTTS2Tiny {
    * data) and load it.
    */
   static async create(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<KittenTTS2Tiny> {
+    checkRuntime();
     const repoId = tinyRepoId(options.model);
     if (!repoId) throw KittenTTSError.invalidArgument(`Unknown model ${String(options.model)}`);
-    const platform = options.platform ?? (await (await import('./platform')).defaultTinyPlatform(options));
+    const base = options.platform ?? (await (await import('./platform')).defaultTinyPlatform(options));
     const dir = repoId.split('/')[1];
-    const base = options.modelBaseURL ?? huggingFaceResolveURL(repoId);
+    const routes: Record<string, TinyAssetStore> = {};
+    if (options.modelDirectory) routes[dir] = base.store.local(options.modelDirectory);
+    if (options.textDataDirectory) routes[TEXT_DIR] = base.store.local(options.textDataDirectory);
+    const platform: Platform = Object.keys(routes).length
+      ? { ort: base.ort, store: routedStore(base.store, routes) }
+      : base;
+    const url = options.modelBaseURL ?? huggingFaceResolveURL(repoId);
     await platform.store.ensure(
-      ['config.json', 'vocab.json'].map(f => ({ key: `${dir}/${f}`, url: `${base}/${f}` })),
+      ['config.json', 'vocab.json'].map(f => withToken({ key: `${dir}/${f}`, url: `${url}/${f}` }, options.hfToken)),
     );
     let config: TinyRepoConfig;
     let vocab: Record<string, number>;
@@ -157,6 +204,11 @@ export class KittenTTS2Tiny {
   static async predownload(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<void> {
     const tts = await KittenTTS2Tiny.create(options, onProgress);
     await tts.dispose();
+  }
+
+  /** The ONNX weight formats this model has, e.g. `['int8', 'int4']`. */
+  get onnxWeights(): KittenTinyWeights[] {
+    return onnxWeights(this.config);
   }
 
   // ---- voices -----------------------------------------------------------------------------
@@ -279,6 +331,13 @@ export class KittenTTS2Tiny {
     }
   }
 
+  /** Generate and write a 16-bit WAV file (Python's generate_to_file). Returns the path. */
+  async generateToFile(text: string, path: string, options: KittenTTS2TinyFileOptions = {}): Promise<string> {
+    const result = await this.generate(text, options);
+    await this.platform.store.writeFile(path, WAVEncoder.encode(result.samples, options.sampleRate ?? this.sampleRate));
+    return path;
+  }
+
   /** Generate and play through the configured player. */
   async speak(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): Promise<KittenTTSResult<string>> {
     const result = await this.generate(text, voiceOrOptions, speed);
@@ -323,38 +382,54 @@ export class KittenTTS2Tiny {
     return `${this.repoId.split('/')[1]}/${file}`;
   }
 
-  private modelURL(file: string): string {
-    return `${this.options.modelBaseURL ?? huggingFaceResolveURL(this.repoId)}/${file}`;
+  private modelRequest(file: string): AssetRequest {
+    const base = this.options.modelBaseURL ?? huggingFaceResolveURL(this.repoId);
+    return withToken({ key: this.modelKey(file), url: `${base}/${file}` }, this.options.hfToken);
   }
 
   private textURL(file: string): string {
     return `${this.options.textDataURL ?? DEFAULT_TEXT_DATA_URL}/${file}`;
   }
 
+  private textManifest: Promise<TextManifest> | null = null;
+
+  /** The text data's manifest: which files exist, their sizes and which are hosted gzipped. */
+  private manifest(): Promise<TextManifest> {
+    this.textManifest ??= (async () => {
+      const key = `${TEXT_DIR}/manifest.json`;
+      await this.platform.store.ensure([withToken({ key, url: this.textURL('manifest.json') }, this.options.hfToken)]);
+      return JSON.parse(await this.platform.store.text(key)) as TextManifest;
+    })();
+    this.textManifest.catch(() => { this.textManifest = null; });
+    return this.textManifest;
+  }
+
+  private async textRequest(file: string): Promise<AssetRequest> {
+    const entry = (await this.manifest()).files[file];
+    if (!entry) throw KittenTTSError.invalidModelData(`The text data has no ${file}`);
+    return withToken({
+      key: `${TEXT_DIR}/${file}`,
+      url: this.textURL(entry.gzip ? `${file}.gz` : file),
+      gzip: Boolean(entry.gzip),
+      size: entry.size,
+    }, this.options.hfToken);
+  }
+
   /** Every file one language needs: graph, voices and front-end data. */
   private async filesFor(lang: string): Promise<AssetRequest[]> {
     const entry = this.config.languages[lang];
-    const model = [modelFiles(entry)[this.weights] as string, entry.voices]
-      .map(f => ({ key: this.modelKey(f), url: this.modelURL(f) }));
+    const model = [modelFiles(entry)[this.weights] as string, entry.voices].map(f => this.modelRequest(f));
     const g2pDir = this.config.g2p_dir ?? 'g2p';
-    let text: AssetRequest[];
+    let textFiles: string[];
     if (lang === 'en') {
-      text = [
-        ...ENGLISH_TEXT_FILES.map(f => ({ key: `${TEXT_DIR}/${f}`, url: this.textURL(f) })),
-        ...ENGLISH_G2P_FILES.map(f => {
-          const file = f.replace(/^g2p\//, `${g2pDir}/`);
-          return { key: this.modelKey(file), url: this.modelURL(file) };
-        }),
-      ];
+      textFiles = [...ENGLISH_TEXT_FILES];
+      model.push(...ENGLISH_G2P_FILES.map(f => this.modelRequest(f.replace(/^g2p\//, `${g2pDir}/`))));
     } else {
       // Loaded lazily so apps that only speak English never load espeak-ng.
       const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
-      text = espeakDataFilesFor(lang).map(f => ({
-        key: `${TEXT_DIR}/espeak-ng-data/${f}`,
-        url: this.textURL(`espeak-ng-data/${f}`),
-      }));
+      textFiles = espeakDataFilesFor(lang).map(f => `espeak-ng-data/${f}`);
     }
-    return [...model, ...text];
+    return [...model, ...(await Promise.all(textFiles.map(f => this.textRequest(f))))];
   }
 
   /** Download (if needed) and load one language. */
@@ -399,7 +474,7 @@ export class KittenTTS2Tiny {
       {
         text: name => store.text(key(name)),
         bytes: name => store.bytes(key(name)),
-        path: store.path ? name => store.path?.(key(name)) : undefined,
+        filePath: store.filePath ? name => store.filePath?.(key(name)) ?? Promise.resolve(undefined) : undefined,
       },
       this.platform.ort,
       vocabV1,
@@ -435,6 +510,11 @@ export class KittenTTS2Tiny {
   private ensureOpen(): void {
     if (this.disposed) throw KittenTTSError.engineNotReady();
   }
+}
+
+function withToken(request: AssetRequest, token?: string): AssetRequest {
+  if (!token || !/^https:\/\/huggingface\.co\//.test(request.url)) return request;
+  return { ...request, headers: { Authorization: `Bearer ${token}` } };
 }
 
 function normalizeOptions(v?: string | KittenTTS2TinyGenerateOptions, speed?: number): KittenTTS2TinyGenerateOptions {

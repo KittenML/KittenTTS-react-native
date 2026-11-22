@@ -7,7 +7,7 @@ import { defaultAssetStorage } from '../storage/AssetStorage';
 import type { AssetStorage } from '../storage/AssetStorage';
 import type { OrtLike } from './ort';
 import type { AssetRequest, TinyAssetStore } from './assets';
-import { aggregateProgress, inBatches } from './assets';
+import { aggregateProgress, inBatches, readOnlyStore, unpack } from './assets';
 import { utf8Decode } from './frontend/english/hash';
 
 export interface TinyPlatformOptions {
@@ -22,6 +22,14 @@ export interface TinyPlatform {
 
 const ORT_WEB_VERSION = '1.26.0';
 let browserOrt: Promise<OrtLike> | undefined;
+
+function isNode(): boolean {
+  const scope = globalThis as { window?: unknown; process?: { versions?: { node?: string } } };
+  return typeof scope.window === 'undefined' && Boolean(scope.process?.versions?.node);
+}
+
+// Opaque to bundlers, as in TTSEngine.web.ts.
+const importModule = new Function('s', 'return import(s)') as (s: string) => Promise<any>;
 
 class FetchAssetStore implements TinyAssetStore {
   private readonly memory = new Map<string, Uint8Array>();
@@ -41,9 +49,9 @@ class FetchAssetStore implements TinyAssetStore {
       let lastError: unknown;
       for (let attempt = 1; attempt <= this.retries; attempt++) {
         try {
-          const res = await fetch(f.url);
+          const res = await fetch(f.url, f.headers ? { headers: f.headers } : undefined);
           if (!res.ok) throw new Error(`HTTP ${res.status} downloading ${f.url}`);
-          const data = new Uint8Array(await res.arrayBuffer());
+          const data = unpack(f, new Uint8Array(await res.arrayBuffer()));
           progress(f.key, data.length, data.length);
           await this.storage.set(f.key, data).catch(() => this.memory.set(f.key, data));
           return;
@@ -63,22 +71,49 @@ class FetchAssetStore implements TinyAssetStore {
   }
 
   async text(key: string): Promise<string> {
-    const bytes = await this.bytes(key);
-    return utf8Decode(bytes);
+    return utf8Decode(await this.bytes(key));
   }
 
   async clear(prefix: string): Promise<void> {
     for (const k of Array.from(this.memory.keys())) if (k.startsWith(prefix)) this.memory.delete(k);
-    // AssetStorage has no listing; callers clear the files they know by key.
+  }
+
+  /** Under Node a folder on disk; in a browser a URL prefix to fetch from. */
+  local(directory: string): TinyAssetStore {
+    const dir = directory.replace(/\/+$/, '');
+    if (isNode()) {
+      const fs = () => importModule('node:fs/promises');
+      const readBytes = async (p: string) => new Uint8Array(await (await fs()).readFile(p));
+      return readOnlyStore(
+        key => `${dir.replace(/^file:\/\//, '')}/${key}`,
+        async p => (await fs()).access(p).then(() => true, () => false),
+        { text: async p => utf8Decode(await readBytes(p)), bytes: readBytes },
+        utf8Decode, this, false,
+      );
+    }
+    const get = async (p: string) => {
+      const res = await fetch(p);
+      if (!res.ok) throw KittenTTSError.modelFileNotFound(p);
+      return new Uint8Array(await res.arrayBuffer());
+    };
+    return readOnlyStore(
+      key => `${dir}/${key}`,
+      async p => fetch(p, { method: 'HEAD' }).then(r => r.ok, () => false),
+      { text: async p => utf8Decode(await get(p)), bytes: get },
+      utf8Decode, this, false,
+    );
+  }
+
+  async writeFile(path: string, data: Uint8Array): Promise<void> {
+    if (!isNode()) throw KittenTTSError.invalidArgument('generateToFile() needs a file system; use result.wavData() in a browser');
+    await (await importModule('node:fs/promises')).writeFile(path, data);
   }
 }
 
 async function loadOrt(): Promise<OrtLike> {
-  const scope = globalThis as { ort?: OrtLike; window?: unknown; document?: any; process?: any };
+  const scope = globalThis as { ort?: OrtLike; document?: any };
   if (scope.ort?.InferenceSession) return scope.ort;
-  if (typeof scope.window === 'undefined' && scope.process?.versions?.node) {
-    // Opaque to bundlers, as in TTSEngine.web.ts.
-    const importModule = new Function('s', 'return import(s)') as (s: string) => Promise<any>;
+  if (isNode()) {
     const mod = await importModule('onnxruntime-web');
     return (mod.default ?? mod) as OrtLike;
   }

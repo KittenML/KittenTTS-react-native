@@ -14,6 +14,7 @@ export enum KittenTTSErrorCode {
   PhonemizerFailed = 'PHONEMIZER_FAILED',
   PlaybackFailed = 'PLAYBACK_FAILED',
   InvalidArgument = 'INVALID_ARGUMENT',
+  UnsupportedRuntime = 'UNSUPPORTED_RUNTIME',
 }
 
 /** Errors thrown by the KittenTTS SDK. */

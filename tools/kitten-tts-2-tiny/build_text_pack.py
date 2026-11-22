@@ -4,9 +4,12 @@
 One folder, to upload as is (the SDK's default is DEFAULT_TEXT_DATA_URL in
 src/tiny/KittenTTS2Tiny.ts):
 
-    en/...               misaki lexicons, spaCy tokenizer + tagger (export_english.py)
+    en/...               misaki lexicons, CMUdict, spaCy tokenizer + tagger (export_english.py)
     espeak-ng-data/...   espeak-ng 1.52.0 data for the 14 espeak languages (espeak_data.py)
     manifest.json        every file with its size and sha256, and the versions it came from
+
+Files that gzip to under 75% of their size are stored only as "<file>.gz"; the manifest
+says so (`gzip`), and the SDK downloads the .gz and unpacks it once on the device.
 
 The model repositories already hold everything else (graphs, voices, g2p/). Run with the
 Python env that has kittenml, misaki and en_core_web_sm:
@@ -15,6 +18,7 @@ Python env that has kittenml, misaki and en_core_web_sm:
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import subprocess
@@ -22,6 +26,28 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+README = """---
+license: other
+tags:
+- text-to-speech
+- kitten-tts
+---
+
+# Kitten TTS 2 text data for the React Native SDK
+
+Text-processing data the [KittenTTS React Native SDK](https://github.com/KittenML/KittenTTS-react-native)
+downloads for Kitten TTS 2 Nano, Pico and Mini, so it phonemizes text exactly like the Python package
+(`kittenml`). Built by `tools/kitten-tts-2-tiny/build_text_pack.py`; `manifest.json` lists every file
+with its size and sha256. Files that compress well are stored gzipped (`<file>.gz`).
+
+| Path | What | From | Licence |
+| --- | --- | --- | --- |
+| `en/misaki-us-*.json` | misaki 0.9.4 American English lexicons | [hexgrad/misaki](https://github.com/hexgrad/misaki) | Apache-2.0 |
+| `en/cmu_misaki_us.json` | CMUdict in misaki's alphabet | the KittenML/kitten-tts-2-* repositories (`g2p/`) | CMUdict (BSD-style) |
+| `en/spacy-*` | spaCy en_core_web_sm 3.8.0 tokenizer rules and part-of-speech tagger (network as ONNX, float16 weights) | [explosion/spacy-models](https://github.com/explosion/spacy-models) | MIT |
+| `espeak-ng-data/` | espeak-ng 1.52.0 compiled data (via espeakng_loader 0.2.4) | [espeak-ng](https://github.com/espeak-ng/espeak-ng) | GPL-3.0-or-later |
+"""
 
 
 def main() -> None:
@@ -36,12 +62,20 @@ def main() -> None:
     (out / "en" / "manifest.json").unlink()
     files = {}
     for p in sorted(out.rglob("*")):
-        if p.is_file() and p.name != "manifest.json":
-            rel = p.relative_to(out).as_posix()
-            files[rel] = {"size": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+        if not p.is_file() or p.name == "manifest.json" or p.suffix == ".gz":
+            continue
+        rel = p.relative_to(out).as_posix()
+        raw = p.read_bytes()
+        entry = {"size": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+        packed = gzip.compress(raw, compresslevel=9, mtime=0)
+        if len(raw) > 32_000 and len(packed) < 0.75 * len(raw):
+            p.with_name(p.name + ".gz").write_bytes(packed)
+            p.unlink()
+            entry["gzip"] = {"size": len(packed), "sha256": hashlib.sha256(packed).hexdigest()}
+        files[rel] = entry
     manifest = {
         "name": "kitten-tts-2-text",
-        "version": 1,
+        "version": 2,
         "sources": {
             "misaki": en.get("misaki"),
             "spacy": en.get("spacy"),
@@ -52,8 +86,10 @@ def main() -> None:
         "files": files,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")
+    (out / "README.md").write_text(README, encoding="utf-8")
     total = sum(f["size"] for f in files.values())
-    print(f"{len(files)} files, {total / 1e6:.1f} MB in {out}")
+    hosted = sum(f["gzip"]["size"] if "gzip" in f else f["size"] for f in files.values())
+    print(f"{len(files)} files, {total / 1e6:.1f} MB ({hosted / 1e6:.1f} MB to download) in {out}")
 
 
 if __name__ == "__main__":

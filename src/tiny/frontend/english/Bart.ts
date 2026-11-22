@@ -26,7 +26,22 @@ type Tensors = Record<string, Float32Array>;
 
 const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
-/** Parse a .safetensors file holding float32 tensors. */
+/** n float16 values (little endian) from bytes[offset...], widened to float32. */
+function float16ToFloat32(bytes: Uint8Array, offset: number, n: number): Float32Array {
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const h = bytes[offset + 2 * i] | (bytes[offset + 2 * i + 1] << 8);
+    const sign = h & 0x8000 ? -1 : 1;
+    const exp = (h >> 10) & 0x1f;
+    const frac = h & 0x3ff;
+    if (exp === 0) out[i] = sign * frac * 2 ** -24;
+    else if (exp === 31) out[i] = frac ? NaN : sign * Infinity;
+    else out[i] = sign * (1 + frac / 1024) * 2 ** (exp - 15);
+  }
+  return out;
+}
+
+/** Parse a .safetensors file holding float32 or float16 tensors (float16 is widened). */
 export function parseSafetensors(bytes: Uint8Array): Tensors {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const headerLen = Number(view.getBigUint64(0, true));
@@ -37,8 +52,12 @@ export function parseSafetensors(bytes: Uint8Array): Tensors {
   const out: Tensors = {};
   for (const [name, info] of Object.entries(header)) {
     if (name === '__metadata__') continue;
-    if (info.dtype !== 'F32') throw new Error(`unsupported dtype ${info.dtype} for ${name}`);
     const [a, b] = info.data_offsets;
+    if (info.dtype === 'F16') {
+      out[name] = float16ToFloat32(bytes, base + a, (b - a) / 2);
+      continue;
+    }
+    if (info.dtype !== 'F32') throw new Error(`unsupported dtype ${info.dtype} for ${name}`);
     if (LITTLE_ENDIAN) {
       // A copy starts at offset 0, so the view is aligned.
       out[name] = new Float32Array(bytes.slice(base + a, base + b).buffer);

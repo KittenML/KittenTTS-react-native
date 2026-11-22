@@ -11,7 +11,10 @@ this writes the data they read, taken from the same package versions Python uses
                                 special cases
     en/spacy-tagger.json        the tagger's feature columns, hash seeds, tags and norm
                                 tables
-    en/spacy-tagger.onnx        the tagger's network (tok2vec + softmax) as ONNX
+    en/spacy-tagger.onnx        the tagger's network (tok2vec + softmax) as ONNX, float16
+                                weights
+    en/cmu_misaki_us.json       CMUdict in misaki's alphabet, from the model repositories'
+                                g2p/ folder (kept here so it can be downloaded gzipped)
 
 Run with the venv that has kittenml, misaki and en_core_web_sm:
 
@@ -196,8 +199,30 @@ def tagger_onnx(embeds, maxouts, norms, softmax):
         inits)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], producer_name="kittentts")
     model.ir_version = 8
+    to_float16(model)
     onnx.checker.check_model(model)
     return model
+
+
+def to_float16(model) -> None:
+    """Store the large float32 weights as float16, cast back to float32 where they are used.
+
+    Halves the download (6.3 -> 3.1 MB); the arithmetic stays float32. Checked against
+    spaCy: the same tag on all 71,735 words of the parity corpus."""
+    from onnx import TensorProto, helper, numpy_helper
+    inits, casts = [], []
+    for init in model.graph.initializer:
+        arr = numpy_helper.to_array(init)
+        if arr.dtype == np.float32 and arr.size > 256:
+            inits.append(numpy_helper.from_array(arr.astype(np.float16), init.name + "_f16"))
+            casts.append(helper.make_node("Cast", [init.name + "_f16"], [init.name], to=TensorProto.FLOAT))
+        else:
+            inits.append(init)
+    del model.graph.initializer[:]
+    model.graph.initializer.extend(inits)
+    nodes = list(model.graph.node)
+    del model.graph.node[:]
+    model.graph.node.extend(casts + nodes)
 
 
 def export_tagger(nlp, out: Path) -> dict:
@@ -255,6 +280,11 @@ def main() -> None:
     meta = export_tagger(nlp, out)
     (out / "spacy-tagger.json").write_text(
         json.dumps(meta, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    # CMUdict as the Python package reads it, from the model repository's g2p/ folder
+    # (the same file in all three repositories).
+    from huggingface_hub import hf_hub_download
+    shutil.copyfile(hf_hub_download("KittenML/kitten-tts-2-nano", "g2p/cmu_misaki_us.json"),
+                    out / "cmu_misaki_us.json")
     import misaki
     from misaki import data as misaki_data
     for name in ("us_gold.json", "us_silver.json"):

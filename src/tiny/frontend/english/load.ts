@@ -16,19 +16,21 @@ export interface AssetReader {
   text(name: string): Promise<string>;
   bytes(name: string): Promise<Uint8Array>;
   /** A local file ONNX Runtime can open itself (faster than handing it bytes on device). */
-  path?(name: string): string | undefined;
+  filePath?(name: string): Promise<string | undefined>;
 }
 
+/** From the text data (textDataURL). */
 export const ENGLISH_TEXT_FILES = [
   'en/spacy-tokenizer.json',
   'en/spacy-tagger.json',
   'en/spacy-tagger.onnx',
   'en/misaki-us-gold.json',
   'en/misaki-us-silver.json',
+  'en/cmu_misaki_us.json',
 ] as const;
 
+/** From the model repository's g2p/ folder. */
 export const ENGLISH_G2P_FILES = [
-  'g2p/cmu_misaki_us.json',
   'g2p/g2p_bart_en_us/config.json',
   'g2p/g2p_bart_en_us/model.safetensors',
 ] as const;
@@ -44,11 +46,11 @@ export async function loadEnglishG2P(
     json<SpacyTaggerMeta>('en/spacy-tagger.json'),
     json<Lexicon>('en/misaki-us-gold.json'),
     json<Lexicon>('en/misaki-us-silver.json'),
-    json<Record<string, string>>('g2p/cmu_misaki_us.json'),
+    json<Record<string, string>>('en/cmu_misaki_us.json'),
     json<BartConfig>('g2p/g2p_bart_en_us/config.json'),
     reader.bytes('g2p/g2p_bart_en_us/model.safetensors'),
   ]);
-  const taggerModel = reader.path?.('en/spacy-tagger.onnx') ?? (await reader.bytes('en/spacy-tagger.onnx'));
+  const taggerModel = (await reader.filePath?.('en/spacy-tagger.onnx')) ?? (await reader.bytes('en/spacy-tagger.onnx'));
   const tagger = await SpacyTagger.create(ort, taggerMeta, taggerModel);
   const g2p = new EnglishG2P(
     {

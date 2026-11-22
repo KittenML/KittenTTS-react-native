@@ -29,7 +29,7 @@ const dataDir = fs.existsSync(path.join(dataRoot, 'espeak-ng-data'))
 let skip = false;
 if (!fs.existsSync(runtime)) {
   skip = 'espeak-ng runtime missing: npm run build:espeak && node scripts/copy-generated.js';
-} else if (!fs.existsSync(path.join(dataDir, 'phontab'))) {
+} else if (!fs.existsSync(path.join(dataDir, 'phontab')) && !fs.existsSync(path.join(dataDir, 'phontab.gz'))) {
   skip = `espeak-ng-data missing in ${dataDir}: python -I tools/kitten-tts-2-tiny/espeak_data.py`;
 }
 
@@ -37,7 +37,13 @@ const espeak = skip ? null : require('../lib/tiny/frontend/espeak/EspeakG2P');
 
 function readFiles(names) {
   const files = {};
-  for (const name of names) files[name] = new Uint8Array(fs.readFileSync(path.join(dataDir, name)));
+  for (const name of names) {
+    // The hosted text data keeps some files gzipped ("<name>.gz").
+    const plain = path.join(dataDir, name);
+    files[name] = fs.existsSync(plain)
+      ? new Uint8Array(fs.readFileSync(plain))
+      : require('pako').inflate(new Uint8Array(fs.readFileSync(`${plain}.gz`)));
+  }
   return files;
 }
 
@@ -147,6 +153,8 @@ test('espeakDataFilesFor matches the data manifest', { skip }, () => {
   const manifestPath = path.join(dataRoot, 'manifest.json');
   if (!fs.existsSync(manifestPath)) return;
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  // espeak_data.py's manifest has "languages"; the text pack's (build_text_pack.py) "espeakLanguages".
+  manifest.languages = manifest.languages || manifest.espeakLanguages;
   for (const lang of allLangs) {
     assert.deepEqual(espeak.espeakDataFilesFor(lang), manifest.languages[lang], lang);
   }
