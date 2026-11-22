@@ -74,8 +74,10 @@ class FetchAssetStore implements TinyAssetStore {
     return utf8Decode(await this.bytes(key));
   }
 
-  async clear(prefix: string): Promise<void> {
-    for (const k of Array.from(this.memory.keys())) if (k.startsWith(prefix)) this.memory.delete(k);
+  /** Removes one cached file (AssetStorage cannot list a folder). */
+  async clear(key: string): Promise<void> {
+    for (const k of Array.from(this.memory.keys())) if (k.startsWith(key)) this.memory.delete(k);
+    await this.storage.delete(key).catch(() => {});
   }
 
   /** Under Node a folder on disk; in a browser a URL prefix to fetch from. */

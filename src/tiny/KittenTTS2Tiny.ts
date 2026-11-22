@@ -416,6 +416,7 @@ export class KittenTTS2Tiny {
   }
 
   private textManifest: Promise<TextManifest> | null = null;
+  private manifestRefresh: Promise<TextManifest> | null = null;
 
   /** The text data's manifest: which files exist, their sizes and which are hosted gzipped. */
   private manifest(): Promise<TextManifest> {
@@ -429,7 +430,17 @@ export class KittenTTS2Tiny {
   }
 
   private async textRequest(file: string): Promise<AssetRequest> {
-    const entry = (await this.manifest()).files[file];
+    let entry = (await this.manifest()).files[file];
+    if (!entry) {
+      // A manifest cached before the hosted data gained this file: fetch it again, once
+      // (shared by the requests that miss together).
+      this.manifestRefresh ??= (async () => {
+        await this.platform.store.clear(`${TEXT_DIR}/manifest.json`);
+        this.textManifest = null;
+        return this.manifest();
+      })();
+      entry = (await this.manifestRefresh).files[file];
+    }
     if (!entry) throw KittenTTSError.invalidModelData(`The text data has no ${file}`);
     return withToken({
       key: `${TEXT_DIR}/${file}`,
