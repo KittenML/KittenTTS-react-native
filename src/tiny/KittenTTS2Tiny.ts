@@ -106,6 +106,7 @@ export interface KittenTTS2TinyVoice {
   name: string;
   description: string;
   language: string;
+  [field: string]: unknown;
 }
 
 interface Platform {
@@ -223,9 +224,9 @@ export class KittenTTS2Tiny {
   /** The voices of one language (default: all), with key, name, description and language. */
   voices(language?: string): KittenTTS2TinyVoice[] {
     const langs = language ? [this.language(language)] : this.languages;
+    // Every field the repository's config has for the voice, plus its language, as in Python.
     return langs.flatMap(lang => (this.config.voices[lang] ?? []).map(v => ({
-      key: v.key,
-      name: v.name,
+      ...v,
       description: v.description ?? '',
       language: lang,
     })));
