@@ -26,6 +26,7 @@ CASES = [
     ("kitten-tts-2-pico", "int8", "fr", None, "Bonjour, je m'appelle Marie et j'habite à Paris."),
     ("kitten-tts-2-mini", "int8", "en", None, "Mini speaks sixteen languages; this is English."),
     ("kitten-tts-2-mini", "int4", "es", None, "Hola, ¿cómo estás? Hoy hace buen tiempo."),
+    ("kitten-tts-2-mini", "int8", "ja", None, "今日はいい天気ですね。東京タワーに行きましょう！"),
 ]
 LONG = ("This sentence repeats to make a long text that is cut into chunks. " * 14).strip()
 CASES.append(("kitten-tts-2-nano", "int8", "en", None, LONG))

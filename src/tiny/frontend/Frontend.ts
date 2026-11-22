@@ -7,6 +7,7 @@
 import type { EnglishG2P } from './english/EnglishG2P';
 import { pyLen, pyStripSpace } from './english/pystr';
 import type { EspeakG2P, PhonemizerVersion } from './espeak/EspeakG2P';
+import type { JapaneseG2P } from './japanese/JapaneseG2P';
 import { foldExtra } from './phonemize';
 
 export const MAX_PHON = 350;             // p90 phoneme length of the training lists
@@ -27,6 +28,16 @@ class LangG2P implements G2PLike {
 
   async phonemize(text: string): Promise<{ text: string; phonemes: string }> {
     const ps = this.espeak.phonemizeLang(text, this.lang, this.version);
+    return { text, phonemes: Array.from(ps).filter(c => this.vocab.has(c)).join('') };
+  }
+}
+
+/** Japanese (Mini): misaki's cutlet G2P, then the vocab filter, as LangG2P does. */
+class JaG2P implements G2PLike {
+  constructor(private readonly ja: JapaneseG2P, private readonly vocab: ReadonlySet<string>) {}
+
+  async phonemize(text: string): Promise<{ text: string; phonemes: string }> {
+    const ps = this.ja.phonemize(text);
     return { text, phonemes: Array.from(ps).filter(c => this.vocab.has(c)).join('') };
   }
 }
@@ -68,6 +79,7 @@ export async function frontEnd(g2p: G2PLike, text: string): Promise<string[]> {
 export interface FrontendLoaders {
   english(vocabV1: ReadonlySet<string>): Promise<EnglishG2P>;
   espeak(lang: string): Promise<EspeakG2P>;
+  japanese(): Promise<JapaneseG2P>;
 }
 
 /** The text front end of one model repository: its phonemizer version and vocab. */
@@ -91,6 +103,8 @@ export class TinyFrontend {
         // U+0289 on the unused id 29); the v2 models then fold with fold_extra.
         const v1 = new Set(Array.from(this.vocab).filter(k => k !== 'ʉ'));
         g = this.loaders.english(v1);
+      } else if (lang === 'ja') {
+        g = this.loaders.japanese().then(j => new JaG2P(j, this.vocab));
       } else {
         g = this.loaders.espeak(lang).then(e => new LangG2P(e, lang, this.phonemizer, this.vocab));
       }

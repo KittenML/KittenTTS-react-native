@@ -78,8 +78,22 @@ async function readText(path: string): Promise<string> {
   }
 }
 
+const SLICE = 4 * 1024 * 1024;
+
+/**
+ * A file's bytes. Big files (Japanese's 42 MB cost table) are read in 4 MB slices, so the
+ * base64 and binary strings in between never hold more than one slice: memory peaks near
+ * the file's own size instead of three to four times it.
+ */
 async function readBytes(path: string): Promise<Uint8Array> {
-  return bytesOf(binaryString(await RNFS.readFile(path, 'base64')));
+  const size = Number((await RNFS.stat(path)).size);
+  if (size <= SLICE) return bytesOf(binaryString(await RNFS.readFile(path, 'base64')));
+  const out = new Uint8Array(size);
+  for (let pos = 0; pos < size; pos += SLICE) {
+    const bin = binaryString(await RNFS.read(path, Math.min(SLICE, size - pos), pos, 'base64'));
+    for (let i = 0; i < bin.length; i++) out[pos + i] = bin.charCodeAt(i);
+  }
+  return out;
 }
 
 class RNFSAssetStore implements TinyAssetStore {

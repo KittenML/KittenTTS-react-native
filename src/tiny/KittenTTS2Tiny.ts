@@ -16,6 +16,7 @@ import { TinyFrontend } from './frontend/Frontend';
 import { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES, loadEnglishG2P } from './frontend/english/load';
 import { pyLower } from './frontend/english/pystr';
 import type { EspeakG2P } from './frontend/espeak/EspeakG2P';
+import type { JapaneseG2P } from './frontend/japanese/JapaneseG2P';
 import type { OrtLike } from './ort';
 import { createSession } from './ort';
 import type { KittenTinyModel, KittenTinyWeights, TinyRepoConfig, TinyVoice } from './TinyRepo';
@@ -148,6 +149,7 @@ export class KittenTTS2Tiny {
     this.frontend = new TinyFrontend(config.phonemizer ?? 'v1', vocab, {
       english: v1 => this.loadEnglish(v1),
       espeak: lang => this.loadEspeak(lang),
+      japanese: () => this.loadJapanese(),
     });
     this.synth = new TinySynth(platform.ort, vocab, async file => {
       const key = this.modelKey(file);
@@ -381,6 +383,7 @@ export class KittenTTS2Tiny {
     await this.stopSpeaking().catch(() => {});
     await this.synth.dispose();
     if (this.espeak) (await this.espeak.catch(() => null))?.dispose();
+    if (this.japanese) (await this.japanese.catch(() => null))?.dispose();
   }
 
   // ---- files ------------------------------------------------------------------------------
@@ -445,6 +448,10 @@ export class KittenTTS2Tiny {
     if (lang === 'en') {
       textFiles = [...ENGLISH_TEXT_FILES];
       model.push(...ENGLISH_G2P_FILES.map(f => this.modelRequest(f.replace(/^g2p\//, `${g2pDir}/`))));
+    } else if (lang === 'ja') {
+      // UniDic for MeCab, rebuilt compact (65 MB unpacked); only Mini speaks Japanese.
+      const { JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
+      textFiles = [...JAPANESE_DATA_FILES];
     } else {
       // Loaded lazily so apps that only speak English never load espeak-ng.
       const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
@@ -500,6 +507,20 @@ export class KittenTTS2Tiny {
       this.platform.ort,
       vocabV1,
     );
+  }
+
+  private japanese: Promise<JapaneseG2P> | null = null;
+
+  private loadJapanese(): Promise<JapaneseG2P> {
+    this.japanese ??= (async () => {
+      const { JapaneseG2P, JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
+      const files: Record<string, Uint8Array> = {};
+      // JapaneseG2P keeps views on these arrays (no copies): they belong to it from here.
+      for (const f of JAPANESE_DATA_FILES) files[f] = await this.platform.store.bytes(`${TEXT_DIR}/${f}`);
+      return JapaneseG2P.create(files);
+    })();
+    this.japanese.catch(() => { this.japanese = null; });
+    return this.japanese;
   }
 
   private loadEspeak(lang: string): Promise<EspeakG2P> {

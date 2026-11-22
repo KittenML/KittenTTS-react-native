@@ -6,6 +6,8 @@ src/tiny/KittenTTS2Tiny.ts):
 
     en/...               misaki lexicons, CMUdict, spaCy tokenizer + tagger (export_english.py)
     espeak-ng-data/...   espeak-ng 1.52.0 data for the 14 espeak languages (espeak_data.py)
+    ja/...               UniDic (unidic-lite 1.0.8) rebuilt for the TypeScript MeCab, and cutlet's
+                         tables, for Mini's Japanese (japanese_data.py)
     manifest.json        every file with its size and sha256, and the versions it came from
 
 Files that gzip to under 75% of their size are stored only as "<file>.gz"; the manifest
@@ -47,6 +49,8 @@ with its size and sha256. Files that compress well are stored gzipped (`<file>.g
 | `en/cmu_misaki_us.json` | CMUdict in misaki's alphabet | the KittenML/kitten-tts-2-* repositories (`g2p/`) | CMUdict (BSD-style) |
 | `en/spacy-*` | spaCy en_core_web_sm 3.8.0 tokenizer rules and part-of-speech tagger (network as ONNX, float16 weights) | [explosion/spacy-models](https://github.com/explosion/spacy-models) | MIT |
 | `espeak-ng-data/` | espeak-ng 1.52.0 compiled data (via espeakng_loader 0.2.4) | [espeak-ng](https://github.com/espeak-ng/espeak-ng) | GPL-3.0-or-later |
+| `ja/unidic-*.bin` | unidic-lite 1.0.8 (UniDic 2.1.2) entries, costs and connection matrix, rebuilt compact; readings only | [polm/unidic-lite](https://github.com/polm/unidic-lite) | BSD-3-Clause / LGPL-2.1 / GPL-2.0 |
+| `ja/cutlet.bin` | misaki's Japanese word list, cutlet's tables, Unicode 15.0 tables | [hexgrad/misaki](https://github.com/hexgrad/misaki), [polm/cutlet](https://github.com/polm/cutlet) | Apache-2.0 / MIT |
 """
 
 
@@ -56,6 +60,8 @@ def main() -> None:
     subprocess.run([sys.executable, "-I", str(HERE / "export_english.py"), str(out)], check=True,
                    stdout=subprocess.DEVNULL)
     subprocess.run([sys.executable, "-I", str(HERE / "espeak_data.py"), "--out", str(out)], check=True,
+                   stdout=subprocess.DEVNULL)
+    subprocess.run([sys.executable, "-I", str(HERE / "japanese_data.py"), "--out", str(out)], check=True,
                    stdout=subprocess.DEVNULL)
     en = json.loads((out / "en" / "manifest.json").read_text())
     espeak = json.loads((out / "manifest.json").read_text())
