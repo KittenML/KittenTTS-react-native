@@ -21,6 +21,8 @@ import { createSession } from './ort';
 import type { KittenTinyModel, KittenTinyWeights, TinyRepoConfig, TinyVoice } from './TinyRepo';
 import { huggingFaceResolveURL, modelFiles, onnxWeights, tinyRepoId } from './TinyRepo';
 import { GAP_SECONDS, TinySynth } from './TinySynth';
+import type { PhonemeWordTime } from './WordTimings';
+import { phonemeWordTimes, wordTimings } from './WordTimings';
 
 /**
  * Where the text front end's data lives: misaki's lexicons, spaCy's tokenizer and tagger
@@ -278,31 +280,48 @@ export class KittenTTS2Tiny {
     return this.frontend.phonemize(text, lang);
   }
 
-  /** Synthesize `text`: 24 kHz float32 audio. Long text is cut at sentence ends and joined with 0.15 s of silence. */
+  /**
+   * Synthesize `text`: 24 kHz float32 audio. Long text is cut at sentence ends and joined
+   * with 0.15 s of silence. `wordTimings` gives each input word's time range.
+   */
   async generate(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): Promise<KittenTTSResult<string>> {
     const opts = normalizeOptions(voiceOrOptions, speed);
-    const parts: Float32Array[] = [];
-    let voiceName = '';
-    for await (const r of this.generateStreaming(text, opts)) {
-      parts.push(r.samples);
-      voiceName = r.voice;
-    }
     const gap = Math.floor(GAP_SECONDS * this.sampleRate);
-    const total = parts.reduce((n, p) => n + p.length, 0) + gap * Math.max(0, parts.length - 1);
-    const samples = new Float32Array(total);
-    let at = 0;
+    const parts: Float32Array[] = [];
+    const groups: PhonemeWordTime[] = [];
+    let offset = 0;
+    let lang = '';
+    let name = '';
+    for await (const c of this.chunks(text, opts)) {
+      if (parts.length) offset += gap;
+      const at = offset / this.sampleRate;
+      for (const g of c.groups) groups.push({ phonemes: g.phonemes, start: g.start + at, end: g.end + at });
+      parts.push(c.samples);
+      offset += c.samples.length;
+      lang = c.lang;
+      name = c.voice;
+    }
+    const samples = new Float32Array(offset);
+    let pos = 0;
     parts.forEach((p, i) => {
-      samples.set(p, at);
-      at += p.length + (i < parts.length - 1 ? gap : 0);
+      samples.set(p, pos);
+      pos += p.length + (i < parts.length - 1 ? gap : 0);
     });
-    if (!voiceName) voiceName = this.voiceName(...this.resolveVoice(opts.voice, opts.language));
-    return new KittenTTSResult(samples, this.sampleRate, voiceName, opts.speed ?? 1, text);
+    if (!name) name = this.voiceName(...this.resolveVoice(opts.voice, opts.language));
+    return new KittenTTSResult(samples, this.sampleRate, name, opts.speed ?? 1, text, wordTimings(text, lang, groups));
   }
 
   /** Synthesize chunk by chunk, yielding each as soon as it is ready. */
   async *generateStreaming(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): AsyncGenerator<KittenTTSResult<string>, void, void> {
-    this.ensureOpen();
     const opts = normalizeOptions(voiceOrOptions, speed);
+    for await (const c of this.chunks(text, opts)) {
+      yield new KittenTTSResult(c.samples, this.sampleRate, c.voice, opts.speed ?? 1, text);
+    }
+  }
+
+  private async *chunks(text: string, opts: KittenTTS2TinyGenerateOptions):
+    AsyncGenerator<{ samples: Float32Array; groups: PhonemeWordTime[]; lang: string; voice: string }, void, void> {
+    this.ensureOpen();
     const s = opts.speed ?? 1;
     if (!Number.isFinite(s) || s <= 0) throw KittenTTSError.invalidArgument(`speed must be a positive number, got ${s}`);
     if (!text || !text.trim()) throw KittenTTSError.emptyInput();
@@ -319,16 +338,17 @@ export class KittenTTS2Tiny {
     const file = modelFiles(entry)[this.weights] as string;
     const pack = (await this.pack(lang))[key];
     if (!pack) throw KittenTTSError.invalidModelData(`voices for ${lang} have no ${key}`);
-    const name = this.voiceName(lang, key);
+    const voice = this.voiceName(lang, key);
     for (let i = 0; i < chunks.length; i++) {
       this.ensureOpen();
-      let samples: Float32Array;
+      let out: { samples: Float32Array; durations: number[]; lead: number; spf: number };
       try {
-        samples = await this.synth.chunk(file, pack, chunks[i], s, i === 0);
+        out = await this.synth.chunkDetailed(file, pack, chunks[i], s, i === 0);
       } catch (error) {
         throw KittenTTSError.inferenceFailed(errorMessage(error), error);
       }
-      yield new KittenTTSResult(samples, this.sampleRate, name, s, text);
+      const groups = phonemeWordTimes(chunks[i], this.vocab, out.durations, out.spf, out.lead, this.sampleRate, out.samples.length);
+      yield { samples: out.samples, groups, lang, voice };
     }
   }
 

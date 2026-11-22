@@ -54,6 +54,15 @@ for (const c of cases) {
       assert.ok(Math.abs(result.samples.length - c.audioSamples) <= 600 * frameDrift,
         `${result.samples.length} vs ${c.audioSamples} samples`);
       assert.ok(result.samples.some(v => Math.abs(v) > 0.05), 'audible audio');
+      // Word timings: in order, inside the audio, the words of the text.
+      const timings = result.wordTimings;
+      assert.ok(timings.length > 0, 'word timings');
+      const words = c.text.split(/\s+/).filter(Boolean);
+      timings.forEach((t, k) => {
+        assert.equal(t.word, words[t.wordIndex]);
+        assert.ok(t.startTime <= t.endTime && t.endTime <= result.duration + 1e-6, JSON.stringify(t));
+        if (k) assert.ok(t.startTime >= timings[k - 1].startTime, JSON.stringify([timings[k - 1], t]));
+      });
     } finally {
       await tts.dispose();
     }

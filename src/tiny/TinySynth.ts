@@ -40,14 +40,24 @@ function linspace(start: number, stop: number, n: number): Float32Array {
 
 /** The trimming and fades of _chunk, on the graph's raw waveform and durations. */
 export function trimChunk(wav: Float32Array, durations: ArrayLike<number | bigint>, keepStart: boolean): Float32Array {
+  return trimChunkDetailed(wav, durations, keepStart).samples;
+}
+
+/** trimChunk, also returning where the kept audio starts (samples) and samples per frame. */
+export function trimChunkDetailed(
+  wav: Float32Array,
+  durations: ArrayLike<number | bigint>,
+  keepStart: boolean,
+): { samples: Float32Array; lead: number; spf: number } {
   const dur = Array.from(durations, Number);
   let w = new Float32Array(wav.length);
   for (let i = 0; i < wav.length; i++) w[i] = Math.min(1, Math.max(-1, wav[i]));
   const total = dur.reduce((a, b) => a + b, 0);
   const spf = Math.max(1, roundHalfEven(w.length / Math.max(total, 1)));   // samples per duration frame
-  const lead = keepStart ? 0 : Math.max(0, dur[0] - 1) * spf;
+  let lead = keepStart ? 0 : Math.max(0, dur[0] - 1) * spf;
   const trail = Math.max(0, dur[dur.length - 1] - 1) * spf;
   if (lead + trail + spf < w.length) w = w.slice(lead, trail ? w.length - trail : w.length);
+  else lead = 0;
   const f = Math.min(120, Math.floor(w.length / 8));                         // ~5 ms fades
   if (f) {
     const up = linspace(0, 1, f);
@@ -55,7 +65,7 @@ export function trimChunk(wav: Float32Array, durations: ArrayLike<number | bigin
     for (let i = 0; i < f; i++) w[i] *= up[i];
     for (let i = 0; i < f; i++) w[w.length - f + i] *= down[i];
   }
-  return w;
+  return { samples: w, lead, spf };
 }
 
 export class TinySynth {
@@ -84,8 +94,14 @@ export class TinySynth {
 
   /** One phoneme chunk -> float32 audio at 24 kHz. */
   async chunk(file: string, pack: VoiceEmbedding, phonemes: string, speed: number, keepStart: boolean): Promise<Float32Array> {
+    return (await this.chunkDetailed(file, pack, phonemes, speed, keepStart)).samples;
+  }
+
+  /** chunk(), with the graph's durations and the trimming, for word timings. */
+  async chunkDetailed(file: string, pack: VoiceEmbedding, phonemes: string, speed: number, keepStart: boolean):
+    Promise<{ samples: Float32Array; durations: number[]; lead: number; spf: number }> {
     const { waveform, durations } = await this.run(file, pack, phonemes, speed);
-    return trimChunk(waveform, durations, keepStart);
+    return { ...trimChunkDetailed(waveform, durations, keepStart), durations };
   }
 
   /** The graph's raw outputs for one chunk: waveform and frames per token. */
