@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added Kitten TTS 2 Nano, Pico and Mini (`KittenTTS.create({ model:
+  'kitten-tts-2-nano' })`): int8 or int4 ONNX graphs, 8 languages (Mini 15),
+  per-language voices, and the Python package's text processing ported to
+  TypeScript (misaki + spaCy tagger for English, espeak-ng 1.52.0 compiled to
+  JavaScript for the rest, GPL-3.0). Phonemes match the Python package's.
+- `KittenTTSResult` takes the voice type as a parameter; `KittenTTSErrorCode`
+  has `INVALID_ARGUMENT`.
+- `npm run build:phonemizer` links with `em++` (current Emscripten no longer
+  links C++ through `emcc`), and `npm run build` also builds espeak-ng.
+
 - Fixed native bundling: the `browser` map added with web support also applied
   on iOS and Android, so Metro bundled the web files and failed with
   "Unable to resolve module node:fs/promises".

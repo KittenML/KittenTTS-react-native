@@ -87,6 +87,41 @@ The default `CEPhonemizer` also caches dictionary files under:
 <DocumentDirectory>/KittenTTS/CEPhonemizer/
 ```
 
+## Kitten TTS 2 Nano, Pico and Mini
+
+`src/tiny/` runs the small Kitten TTS 2 models (`KittenTTS2Tiny`). Its text
+processing must give exactly the Python package's phonemes (kittenml,
+`kittenml/kittentts2_tiny/`), and the tests check that against fixtures the
+Python package writes (`tools/kitten-tts-2-tiny/*_fixtures.py`):
+
+- `src/tiny/frontend/english/`: tts_norm, num2words, spaCy's tokenizer and
+  tagger features (the tagger network is `en/spacy-tagger.onnx`), misaki, and the
+  CMUdict/BART fallback. Python string semantics (`pystr.ts`) matter: code-point
+  lengths, Unicode `\d`/`\w`, `str.lower()` without the final-sigma rule.
+- `src/tiny/frontend/espeak/`: espeak-ng 1.52.0 compiled to plain JS
+  (`npm run build:espeak`), with phonemizer's and misaki's post-processing.
+- `src/tiny/KittenTTS2Tiny.ts`, `TinySynth.ts`: downloads per language, voices,
+  chunk trimming and fades as in Python's `_chunk`.
+- The text data (`en/`, `espeak-ng-data/`) is built by
+  `tools/kitten-tts-2-tiny/build_text_pack.py` and downloaded from
+  `textDataURL`.
+
+Traps:
+
+- spaCy gives reserved strings ("X", POS tags) fixed small ids instead of hashes,
+  and its encoder pads each doc with 4 zero rows that change the edge tokens:
+  both are in the exported graph and `SpacyTagger.ts`.
+- The speech graphs add random noise, so audio is never sample-identical; a
+  duration on x.5 can round either way between ONNX Runtime builds.
+- Metro applies the `browser` map on native too; every entry needs a matching
+  `react-native` entry (`tests/packaging.test.js`), and code shared by native
+  and web must not import `node:` modules (hence `loader/NPZParser.ts`).
+- Both Emscripten runtimes need `-sWASM=0` (Hermes has no WebAssembly), which
+  Emscripten 7 marks deprecated: pin the emsdk version if it is removed.
+- Tests that need data skip without `KITTEN_TTS_2_TINY_DATA` (a folder with
+  `en/` and `espeak-ng-data/`, plus `vocab-nano.json` and `g2p/` for the English
+  test); model files come from the Hugging Face cache.
+
 ## Error Handling
 
 Public SDK failures should be surfaced as `KittenTTSError` with a stable

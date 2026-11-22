@@ -15,6 +15,7 @@ feature you need.
 - [Playback](guides/playback.md) - Expo Audio, React Native Sound, and custom players.
 - [Bundled offline assets](guides/offline-assets.md) - ship models inside the app.
 - [Word timings](guides/word-timings.md) - highlight words while audio plays.
+- [Kitten TTS 2 Nano, Pico and Mini](guides/kitten-tts-2-tiny.md) - the small multilingual models.
 
 ## Reference
 

@@ -31,6 +31,13 @@ const tts = await KittenTTS.create(options, (progress, info) => {
 });
 ```
 
+With `model: 'kitten-tts-2-nano'`, `'kitten-tts-2-pico'` or `'kitten-tts-2-mini'`
+it returns a `KittenTTS2Tiny` instead: see
+[Kitten TTS 2 Nano, Pico and Mini](../guides/kitten-tts-2-tiny.md). Its options are
+`weights` (`'int8'` or `'int4'`), `languages`, `storageDirectory`, `modelBaseURL`,
+`textDataURL`, `downloadRetries`, `ortNumThreads` and `player`; `generate(text,
+{ voice, language, speed })` takes a voice name and a language code.
+
 ## Common Options
 
 | Option | Default | Description |

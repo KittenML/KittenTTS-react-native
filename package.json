@@ -60,7 +60,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm run build:phonemizer && npm run build:ts",
+    "build": "npm run build:phonemizer && npm run build:espeak && npm run build:ts",
     "build:ts": "tsc -p tsconfig.json && node scripts/copy-generated.js",
     "build:test": "tsc -p tsconfig.json",
     "build:phonemizer": "node scripts/build-cephonemizer.js",

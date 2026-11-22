@@ -27,6 +27,7 @@ Generated files are not committed:
 - `lib/`
 - `*.tgz`
 - `src/phonemizer/generated/cephonemizer-runtime.js`
+- `src/tiny/frontend/espeak/generated/espeakng-runtime.js`
 
 Source files that stay committed:
 
@@ -54,7 +55,28 @@ Then run:
 npm run build:phonemizer
 ```
 
+`npm run build:espeak` builds espeak-ng 1.52.0 for the Kitten TTS 2 Nano, Pico
+and Mini models the same way (it clones espeak-ng into
+`~/.cache/kittentts-espeak-ng/`). Both were last built with Emscripten 7.0.1
+(`emsdk install 7.0.1`).
+
 You do not need Emscripten to install the published npm package.
+
+## Kitten TTS 2 Nano, Pico and Mini Data
+
+The scripts in `tools/kitten-tts-2-tiny/` run with a Python environment that has
+`kittenml` (from KittenML/KittenTTS), `onnx` and spaCy's `en_core_web_sm`:
+
+- `build_text_pack.py OUT`: the text data folder to host at `textDataURL`.
+- `english_fixtures.py`, `espeak_fixtures.py`, `text_norm_fixtures.py`,
+  `synth_fixtures.py`: regenerate the test fixtures from the Python package.
+
+Run the data-dependent tests with the text data folder (plus `vocab-nano.json`
+and the nano repository's `g2p/` for the English test):
+
+```bash
+KITTEN_TTS_2_TINY_DATA=/path/to/data npm test
+```
 
 ## Packaging
 

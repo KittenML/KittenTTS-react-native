@@ -59,7 +59,7 @@ const args = [
   outFile,
 ];
 
-const result = spawnSync('emcc', args, {
+const result = spawnSync('em++', args, {
   cwd: root,
   encoding: 'utf8',
   stdio: 'inherit',
