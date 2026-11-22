@@ -85,6 +85,19 @@ const SLICE = 4 * 1024 * 1024;
  * base64 and binary strings in between never hold more than one slice: memory peaks near
  * the file's own size instead of three to four times it.
  */
+/**
+ * Writes bytes in 3 MB slices (a multiple of 3, so each slice is whole base64). One
+ * writeFile of a 42 MB file passed a 56 MB string to Java, which ran out of its 192 MB
+ * heap on an Android emulator.
+ */
+async function writeBytes(path: string, data: Uint8Array): Promise<void> {
+  const step = 3 * 1024 * 1024;
+  await RNFS.writeFile(path, toBase64(data.subarray(0, step)), 'base64');
+  for (let pos = step; pos < data.length; pos += step) {
+    await RNFS.appendFile(path, toBase64(data.subarray(pos, pos + step)), 'base64');
+  }
+}
+
 async function readBytes(path: string): Promise<Uint8Array> {
   const size = Number((await RNFS.stat(path)).size);
   if (size <= SLICE) return bytesOf(binaryString(await RNFS.readFile(path, 'base64')));
@@ -140,7 +153,7 @@ class RNFSAssetStore implements TinyAssetStore {
         if (res.statusCode !== 200) throw new Error(`HTTP ${res.statusCode} downloading ${f.url}`);
         if (f.gzip) {
           // Unpacked once here, so every later load reads the plain file.
-          await RNFS.writeFile(temp, toBase64(unpack(f, await readBytes(temp))), 'base64');
+          await writeBytes(temp, unpack(f, await readBytes(temp)));
         } else if (f.size !== undefined) {
           const stat = await RNFS.stat(temp);
           if (Number(stat.size) !== f.size) throw new Error(`${f.url}: expected ${f.size} bytes, got ${stat.size}`);
@@ -175,7 +188,7 @@ class RNFSAssetStore implements TinyAssetStore {
   }
 
   async writeFile(path: string, data: Uint8Array): Promise<void> {
-    await RNFS.writeFile(path.replace(/^file:\/\//, ''), toBase64(data), 'base64');
+    await writeBytes(path.replace(/^file:\/\//, ''), data);
   }
 }
 
