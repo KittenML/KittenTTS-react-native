@@ -5,6 +5,7 @@ export { KittenTTS2Tiny, DEFAULT_TEXT_DATA_URL } from './tiny/KittenTTS2Tiny';
 export type {
   KittenTTS2TinyOptions,
   KittenTTS2TinyGenerateOptions,
+  KittenTTS2TinyFileOptions,
   KittenTTS2TinyVoice,
 } from './tiny/KittenTTS2Tiny';
 export { KITTEN_TTS_2_TINY_MODELS, isTinyModel } from './tiny/TinyRepo';

@@ -10,20 +10,20 @@ import type { ProgressHandler } from '../loader/ModelDownloader';
 import { loadNPZData } from '../loader/NPZParser';
 import type { VoiceEmbeddings } from '../loader/NPZParser';
 import { WAVEncoder } from '../audio/WAVEncoder';
-import type { AssetRequest, TinyAssetStore } from './assets';
-import { routedStore } from './assets';
+import type { AssetRequest, TinyFileSource, TinyPlatform } from './assets';
+import { memo, routedStore } from './assets';
 import { TinyFrontend } from './frontend/Frontend';
-import { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES, loadEnglishG2P } from './frontend/english/load';
-import { pyLower } from './frontend/english/pystr';
+import { pyLower } from './frontend/pystr';
 import type { EspeakG2P } from './frontend/espeak/EspeakG2P';
-import type { JapaneseG2P } from './frontend/japanese/JapaneseG2P';
-import type { OrtLike } from './ort';
 import { createSession } from './ort';
 import type { KittenTinyModel, KittenTinyWeights, TinyRepoConfig, TinyVoice } from './TinyRepo';
 import { huggingFaceResolveURL, modelFiles, onnxWeights, tinyRepoId } from './TinyRepo';
+import type { PhonemeWordTime } from './TinySynth';
 import { GAP_SECONDS, TinySynth } from './TinySynth';
-import type { PhonemeWordTime } from './WordTimings';
-import { phonemeWordTimes, wordTimings } from './WordTimings';
+
+// The English front end (and WordTimings, which uses its normaliser) is imported when first
+// used, like espeak-ng and Japanese: it builds Unicode regular expressions that older Hermes
+// cannot, and importing the SDK must work there for the other models.
 
 /**
  * Where the text front end's data lives: misaki's lexicons, spaCy's tokenizer and tagger
@@ -33,6 +33,7 @@ import { phonemeWordTimes, wordTimings } from './WordTimings';
 export const DEFAULT_TEXT_DATA_URL = 'https://huggingface.co/dewan-sl/kitten-tts-2-text/resolve/main';
 /** Cache folder of the text data; bump when its format changes. */
 const TEXT_DIR = 'kitten-tts-2-text-v2';
+const MANIFEST = 'manifest.json';
 
 interface TextManifest {
   version: number;
@@ -87,7 +88,7 @@ export interface KittenTTS2TinyOptions {
   /** Player for `speak()` and `play()`. */
   player?: AudioPlayer;
   /** For tests and custom hosts: ONNX Runtime and a file store to use instead of the platform's. */
-  platform?: { ort: OrtLike; store: TinyAssetStore };
+  platform?: TinyPlatform;
 }
 
 export interface KittenTTS2TinyGenerateOptions {
@@ -112,10 +113,7 @@ export interface KittenTTS2TinyVoice {
   [field: string]: unknown;
 }
 
-interface Platform {
-  ort: OrtLike;
-  store: TinyAssetStore;
-}
+type Options = KittenTTS2TinyOptions & { weights: KittenTinyWeights };
 
 export class KittenTTS2Tiny {
   /** The repository, e.g. `KittenML/kitten-tts-2-nano`. */
@@ -130,15 +128,17 @@ export class KittenTTS2Tiny {
   private readonly synth: TinySynth;
   private readonly packs = new Map<string, Promise<VoiceEmbeddings>>();
   private readonly prepared = new Map<string, Promise<void>>();
+  private readonly manifests = new Map<'cached' | 'refreshed', Promise<TextManifest>>();
+  /** One espeak-ng for every language that uses it. */
   private espeak: Promise<EspeakG2P> | null = null;
   private audio: Promise<AudioOutput> | null = null;
   private disposed = false;
 
   private constructor(
-    private readonly platform: Platform,
+    private readonly platform: TinyPlatform,
     private readonly config: TinyRepoConfig,
-    private readonly vocab: Record<string, number>,
-    private readonly options: KittenTTS2TinyOptions & { weights: KittenTinyWeights },
+    vocab: Record<string, number>,
+    private readonly options: Options,
     repoId: string,
   ) {
     this.repoId = repoId;
@@ -151,10 +151,10 @@ export class KittenTTS2Tiny {
       espeak: lang => this.loadEspeak(lang),
       japanese: () => this.loadJapanese(),
     });
-    this.synth = new TinySynth(platform.ort, vocab, async file => {
+    this.synth = new TinySynth(platform.ort, vocab, this.sampleRate, async file => {
       const key = this.modelKey(file);
-      const model = (await platform.store.filePath?.(key)) ?? (await platform.store.bytes(key));
-      return createSession(platform.ort, model, { intraOpNumThreads: options.ortNumThreads });
+      const model = (await platform.store.filePath(key)) ?? (await platform.store.bytes(key));
+      return createSession(platform.ort, model, options.ortNumThreads);
     });
   }
 
@@ -163,28 +163,54 @@ export class KittenTTS2Tiny {
    * data) and load it.
    */
   static async create(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<KittenTTS2Tiny> {
+    const tts = await KittenTTS2Tiny.open(options);
+    try {
+      const langs = await tts.download(options.languages, onProgress);
+      await Promise.all(langs.map(l => tts.prepare(l)));
+    } catch (error) {
+      await tts.dispose();
+      throw error;
+    }
+    return tts;
+  }
+
+  /** Download a model's files (for `options.languages`) without loading it. */
+  static async predownload(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<void> {
+    const tts = await KittenTTS2Tiny.open(options);
+    try {
+      await tts.download(options.languages, onProgress);
+    } finally {
+      await tts.dispose();
+    }
+  }
+
+  /** Read the model's config and vocab (downloading them if needed); nothing else is loaded. */
+  private static async open(options: KittenTTS2TinyOptions): Promise<KittenTTS2Tiny> {
     checkRuntime();
     const repoId = tinyRepoId(options.model);
     if (!repoId) throw KittenTTSError.invalidArgument(`Unknown model ${String(options.model)}`);
     const base = options.platform ?? (await (await import('./platform')).defaultTinyPlatform(options));
-    const dir = repoId.split('/')[1];
-    const routes: Record<string, TinyAssetStore> = {};
-    if (options.modelDirectory) routes[dir] = base.store.local(options.modelDirectory);
+    const routes: Record<string, TinyFileSource> = {};
+    if (options.modelDirectory) routes[modelFolder(repoId)] = base.store.local(options.modelDirectory);
     if (options.textDataDirectory) routes[TEXT_DIR] = base.store.local(options.textDataDirectory);
-    const platform: Platform = Object.keys(routes).length
+    const platform: TinyPlatform = Object.keys(routes).length
       ? { ort: base.ort, store: routedStore(base.store, routes) }
       : base;
-    const url = options.modelBaseURL ?? huggingFaceResolveURL(repoId);
-    await platform.store.ensure(
-      ['config.json', 'vocab.json'].map(f => withToken({ key: `${dir}/${f}`, url: `${url}/${f}` }, options.hfToken)),
-    );
+    const store = platform.store;
+    const request = (file: string) => modelRequest(repoId, options, file);
     let config: TinyRepoConfig;
     let vocab: Record<string, number>;
+    await store.ensure([request('config.json')]);
     try {
-      config = JSON.parse(await platform.store.text(`${dir}/config.json`));
-      vocab = JSON.parse(await platform.store.text(`${dir}/${config.vocab ?? 'vocab.json'}`));
+      config = JSON.parse(await store.text(request('config.json').key));
+      const vocabFile = request(config.vocab ?? 'vocab.json');
+      await store.ensure([vocabFile]);
+      vocab = JSON.parse(await store.text(vocabFile.key));
     } catch (error) {
-      await platform.store.clear(dir);
+      if (isKittenTTSError(error)) throw error;
+      // A broken download: forget it so the next create() fetches it again.
+      await store.clear(request('config.json').key);
+      await store.clear(request('vocab.json').key);
       throw KittenTTSError.invalidModelData(`Could not read ${repoId}'s config: ${errorMessage(error)}`, error);
     }
     if (config.type !== 'KITTEN2_TINY') {
@@ -196,19 +222,7 @@ export class KittenTTS2Tiny {
         `${config.name ?? repoId} has no ${weights} ONNX weights; expected one of ${onnxWeights(config).join(', ')}`,
       );
     }
-    const tts = new KittenTTS2Tiny(platform, config, vocab, { ...options, weights }, repoId);
-    const langs = options.languages ?? [tts.defaultLanguage];
-    for (const lang of langs) tts.language(lang);
-    const files = await Promise.all(langs.map(l => tts.filesFor(l)));
-    await platform.store.ensure(files.flat(), onProgress);
-    await Promise.all(langs.map(l => tts.prepare(l)));
-    return tts;
-  }
-
-  /** Download a model's files without keeping it loaded. */
-  static async predownload(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<void> {
-    const tts = await KittenTTS2Tiny.create(options, onProgress);
-    await tts.dispose();
+    return new KittenTTS2Tiny(platform, config, vocab, { ...options, weights }, repoId);
   }
 
   /** The ONNX weight formats this model has, e.g. `['int8', 'int4']`. */
@@ -227,7 +241,7 @@ export class KittenTTS2Tiny {
 
   /** The voices of one language (default: all), with key, name, description and language. */
   voices(language?: string): KittenTTS2TinyVoice[] {
-    const langs = language ? [this.language(language)] : this.languages;
+    const langs = language ? [this.resolveLanguage(language)] : this.languages;
     // Every field the repository's config has for the voice, plus its language, as in Python.
     return langs.flatMap(lang => (this.config.voices[lang] ?? []).map(v => ({
       ...v,
@@ -243,10 +257,10 @@ export class KittenTTS2Tiny {
    */
   resolveVoice(voice?: string, language?: string): [string, string] {
     if (voice == null) {
-      const lang = this.language(language);
+      const lang = this.resolveLanguage(language);
       return [lang, this.config.voices[lang][0].key];
     }
-    const langs = language ? [this.language(language)] : this.languages;
+    const langs = language ? [this.resolveLanguage(language)] : this.languages;
     const want = pyLower(String(voice));
     const hits: Array<[string, string]> = [];
     for (const lang of langs) {
@@ -277,7 +291,7 @@ export class KittenTTS2Tiny {
   /** text -> the phoneme chunks the model will speak. */
   async phonemize(text: string, language?: string): Promise<string[]> {
     this.ensureOpen();
-    const lang = this.language(language);
+    const lang = this.resolveLanguage(language);
     await this.prepare(lang);
     return this.frontend.phonemize(text, lang);
   }
@@ -290,27 +304,28 @@ export class KittenTTS2Tiny {
     const opts = normalizeOptions(voiceOrOptions, speed);
     const gap = Math.floor(GAP_SECONDS * this.sampleRate);
     const parts: Float32Array[] = [];
-    const groups: PhonemeWordTime[] = [];
-    let offset = 0;
+    const words: PhonemeWordTime[] = [];
+    let length = 0;
     let lang = '';
     let name = '';
     for await (const c of this.chunks(text, opts)) {
-      if (parts.length) offset += gap;
-      const at = offset / this.sampleRate;
-      for (const g of c.groups) groups.push({ phonemes: g.phonemes, start: g.start + at, end: g.end + at });
+      if (parts.length) length += gap;
+      const at = length / this.sampleRate;
+      for (const w of c.words) words.push({ phonemes: w.phonemes, start: w.start + at, end: w.end + at });
       parts.push(c.samples);
-      offset += c.samples.length;
+      length += c.samples.length;
       lang = c.lang;
       name = c.voice;
     }
-    const samples = new Float32Array(offset);
+    const samples = new Float32Array(length);
     let pos = 0;
-    parts.forEach((p, i) => {
+    for (const p of parts) {
       samples.set(p, pos);
-      pos += p.length + (i < parts.length - 1 ? gap : 0);
-    });
-    if (!name) name = this.voiceName(...this.resolveVoice(opts.voice, opts.language));
-    return new KittenTTSResult(samples, this.sampleRate, name, opts.speed ?? 1, text, wordTimings(text, lang, groups));
+      pos += p.length + gap;
+    }
+    if (!name) name = this.voiceName(...this.resolveVoice(opts.voice, opts.language));   // text with no phonemes
+    const { wordTimings } = await import('./WordTimings');
+    return new KittenTTSResult(samples, this.sampleRate, name, opts.speed ?? 1, text, wordTimings(text, lang, words));
   }
 
   /** Synthesize chunk by chunk, yielding each as soon as it is ready. */
@@ -322,7 +337,7 @@ export class KittenTTS2Tiny {
   }
 
   private async *chunks(text: string, opts: KittenTTS2TinyGenerateOptions):
-    AsyncGenerator<{ samples: Float32Array; groups: PhonemeWordTime[]; lang: string; voice: string }, void, void> {
+    AsyncGenerator<{ samples: Float32Array; words: PhonemeWordTime[]; lang: string; voice: string }, void, void> {
     this.ensureOpen();
     const s = opts.speed ?? 1;
     if (!Number.isFinite(s) || s <= 0) throw KittenTTSError.invalidArgument(`speed must be a positive number, got ${s}`);
@@ -336,21 +351,16 @@ export class KittenTTS2Tiny {
       if (isKittenTTSError(error)) throw error;
       throw KittenTTSError.phonemizerFailed(errorMessage(error), error);
     }
-    const entry = this.config.languages[lang];
-    const file = modelFiles(entry)[this.weights] as string;
     const pack = (await this.pack(lang))[key];
     if (!pack) throw KittenTTSError.invalidModelData(`voices for ${lang} have no ${key}`);
     const voice = this.voiceName(lang, key);
     for (let i = 0; i < chunks.length; i++) {
       this.ensureOpen();
-      let out: { samples: Float32Array; durations: number[]; lead: number; spf: number };
       try {
-        out = await this.synth.chunkDetailed(file, pack, chunks[i], s, i === 0);
+        yield { ...(await this.synth.chunk(this.graphFile(lang), pack, chunks[i], s, i === 0)), lang, voice };
       } catch (error) {
         throw KittenTTSError.inferenceFailed(errorMessage(error), error);
       }
-      const groups = phonemeWordTimes(chunks[i], this.vocab, out.durations, out.spf, out.lead, this.sampleRate, out.samples.length);
-      yield { samples: out.samples, groups, lang, voice };
     }
   }
 
@@ -382,13 +392,13 @@ export class KittenTTS2Tiny {
     this.disposed = true;
     await this.stopSpeaking().catch(() => {});
     await this.synth.dispose();
-    if (this.espeak) (await this.espeak.catch(() => null))?.dispose();
-    if (this.japanese) (await this.japanese.catch(() => null))?.dispose();
+    await this.frontend.dispose();
   }
 
   // ---- files ------------------------------------------------------------------------------
 
-  private language(language?: string): string {
+  /** A language code the model speaks (default: the model's default language). */
+  private resolveLanguage(language?: string): string {
     if (language == null) return this.defaultLanguage;
     if (!this.config.languages[language]) {
       throw KittenTTSError.invalidArgument(
@@ -402,157 +412,137 @@ export class KittenTTS2Tiny {
     return this.config.voices[lang]?.find(v => v.key === key)?.name ?? key;
   }
 
+  /** Download every file these languages need (default: the model's default language). */
+  private async download(languages: string[] | undefined, onProgress?: ProgressHandler): Promise<string[]> {
+    const langs = (languages ?? [this.defaultLanguage]).map(l => this.resolveLanguage(l));
+    const files = await Promise.all(langs.map(l => this.filesFor(l)));
+    await this.platform.store.ensure(files.flat(), onProgress);
+    return langs;
+  }
+
+  /** The language's ONNX graph in the chosen weights. */
+  private graphFile(lang: string): string {
+    return modelFiles(this.config.languages[lang])[this.weights] as string;
+  }
+
+  /** A file of the small English G2P model, in the repository's g2p folder. */
+  private g2pFile(name: string): string {
+    return name.replace(/^g2p\//, `${this.config.g2p_dir ?? 'g2p'}/`);
+  }
+
   private modelKey(file: string): string {
-    return `${this.repoId.split('/')[1]}/${file}`;
+    return modelRequest(this.repoId, this.options, file).key;
   }
 
-  private modelRequest(file: string): AssetRequest {
-    const base = this.options.modelBaseURL ?? huggingFaceResolveURL(this.repoId);
-    return withToken({ key: this.modelKey(file), url: `${base}/${file}` }, this.options.hfToken);
+  private textRequest(file: string, entry?: TextManifest['files'][string]): AssetRequest {
+    const url = `${this.options.textDataURL ?? DEFAULT_TEXT_DATA_URL}/${file}${entry?.gzip ? '.gz' : ''}`;
+    return withToken({ key: `${TEXT_DIR}/${file}`, url, gzip: Boolean(entry?.gzip), size: entry?.size }, this.options.hfToken);
   }
-
-  private textURL(file: string): string {
-    return `${this.options.textDataURL ?? DEFAULT_TEXT_DATA_URL}/${file}`;
-  }
-
-  private textManifest: Promise<TextManifest> | null = null;
-  private manifestRefresh: Promise<TextManifest> | null = null;
 
   /** The text data's manifest: which files exist, their sizes and which are hosted gzipped. */
-  private manifest(): Promise<TextManifest> {
-    this.textManifest ??= (async () => {
-      const key = `${TEXT_DIR}/manifest.json`;
-      await this.platform.store.ensure([withToken({ key, url: this.textURL('manifest.json') }, this.options.hfToken)]);
-      return JSON.parse(await this.platform.store.text(key)) as TextManifest;
-    })();
-    this.textManifest.catch(() => { this.textManifest = null; });
-    return this.textManifest;
+  private async readManifest(): Promise<TextManifest> {
+    const request = this.textRequest(MANIFEST);
+    await this.platform.store.ensure([request]);
+    return JSON.parse(await this.platform.store.text(request.key)) as TextManifest;
   }
 
-  private async textRequest(file: string): Promise<AssetRequest> {
-    let entry = (await this.manifest()).files[file];
+  /** The request for one text data file, as the manifest describes it. */
+  private async textFile(file: string): Promise<AssetRequest> {
+    let entry = (await memo(this.manifests, 'cached', () => this.readManifest())).files[file];
     if (!entry) {
       // A manifest cached before the hosted data gained this file: fetch it again, once
       // (shared by the requests that miss together).
-      this.manifestRefresh ??= (async () => {
-        await this.platform.store.clear(`${TEXT_DIR}/manifest.json`);
-        this.textManifest = null;
-        return this.manifest();
-      })();
-      entry = (await this.manifestRefresh).files[file];
+      const fresh = await memo(this.manifests, 'refreshed', async () => {
+        await this.platform.store.clear(this.textRequest(MANIFEST).key);
+        const manifest = await this.readManifest();
+        this.manifests.set('cached', Promise.resolve(manifest));
+        return manifest;
+      });
+      entry = fresh.files[file];
     }
     if (!entry) throw KittenTTSError.invalidModelData(`The text data has no ${file}`);
-    return withToken({
-      key: `${TEXT_DIR}/${file}`,
-      url: this.textURL(entry.gzip ? `${file}.gz` : file),
-      gzip: Boolean(entry.gzip),
-      size: entry.size,
-    }, this.options.hfToken);
+    return this.textRequest(file, entry);
   }
 
   /** Every file one language needs: graph, voices and front-end data. */
   private async filesFor(lang: string): Promise<AssetRequest[]> {
-    const entry = this.config.languages[lang];
-    const model = [modelFiles(entry)[this.weights] as string, entry.voices].map(f => this.modelRequest(f));
-    const g2pDir = this.config.g2p_dir ?? 'g2p';
-    let textFiles: string[];
+    const model = [this.graphFile(lang), this.config.languages[lang].voices];
+    let textFiles: readonly string[];
     if (lang === 'en') {
-      textFiles = [...ENGLISH_TEXT_FILES];
-      model.push(...ENGLISH_G2P_FILES.map(f => this.modelRequest(f.replace(/^g2p\//, `${g2pDir}/`))));
+      const { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES } = await import('./frontend/english/load');
+      model.push(...ENGLISH_G2P_FILES.map(f => this.g2pFile(f)));
+      textFiles = ENGLISH_TEXT_FILES;
     } else if (lang === 'ja') {
       // UniDic for MeCab, rebuilt compact (65 MB unpacked); only Mini speaks Japanese.
       const { JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
-      textFiles = [...JAPANESE_DATA_FILES];
+      textFiles = JAPANESE_DATA_FILES;
     } else {
-      // Loaded lazily so apps that only speak English never load espeak-ng.
+      // Imported here so apps that only speak English never load espeak-ng.
       const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
       textFiles = espeakDataFilesFor(lang).map(f => `espeak-ng-data/${f}`);
     }
-    return [...model, ...(await Promise.all(textFiles.map(f => this.textRequest(f))))];
+    return [
+      ...model.map(f => modelRequest(this.repoId, this.options, f)),
+      ...(await Promise.all(textFiles.map(f => this.textFile(f)))),
+    ];
   }
 
   /** Download (if needed) and load one language. */
   private prepare(lang: string): Promise<void> {
-    let p = this.prepared.get(lang);
-    if (!p) {
-      p = (async () => {
-        await this.platform.store.ensure(await this.filesFor(lang));
-        const entry = this.config.languages[lang];
-        await Promise.all([
-          this.synth.prepare(modelFiles(entry)[this.weights] as string),
-          this.pack(lang),
-          // English's lexicons and tagger take a few seconds to load on a phone:
-          // better in create() than in the first generate().
-          this.frontend.ready(lang),
-        ]);
-      })();
-      p.catch(() => this.prepared.delete(lang));
-      this.prepared.set(lang, p);
-    }
-    return p;
+    return memo(this.prepared, lang, async () => {
+      this.ensureOpen();
+      await this.platform.store.ensure(await this.filesFor(lang));
+      await Promise.all([
+        this.synth.prepare(this.graphFile(lang)),
+        this.pack(lang),
+        // English's lexicons and tagger take a few seconds to load on a phone:
+        // better in create() than in the first generate().
+        this.frontend.ready(lang),
+      ]);
+    });
   }
 
   private pack(lang: string): Promise<VoiceEmbeddings> {
     const file = this.config.languages[lang].voices;
-    let p = this.packs.get(file);
-    if (!p) {
-      p = this.platform.store.bytes(this.modelKey(file)).then(b => loadNPZData(b, file));
-      p.catch(() => this.packs.delete(file));
-      this.packs.set(file, p);
-    }
-    return p;
+    return memo(this.packs, file, async () => loadNPZData(await this.platform.store.bytes(this.modelKey(file)), file));
   }
 
-  private loadEnglish(vocabV1: ReadonlySet<string>) {
+  private async loadEnglish(vocabV1: ReadonlySet<string>) {
+    const { loadEnglishG2P } = await import('./frontend/english/load');
     const store = this.platform.store;
-    const g2pDir = this.config.g2p_dir ?? 'g2p';
-    const key = (name: string) => (name.startsWith('g2p/')
-      ? this.modelKey(name.replace(/^g2p\//, `${g2pDir}/`))
-      : `${TEXT_DIR}/${name}`);
+    const key = (name: string) => (name.startsWith('g2p/') ? this.modelKey(this.g2pFile(name)) : `${TEXT_DIR}/${name}`);
     return loadEnglishG2P(
-      {
-        text: name => store.text(key(name)),
-        bytes: name => store.bytes(key(name)),
-        filePath: store.filePath ? name => store.filePath?.(key(name)) ?? Promise.resolve(undefined) : undefined,
-      },
+      { text: name => store.text(key(name)), bytes: name => store.bytes(key(name)), filePath: name => store.filePath(key(name)) },
       this.platform.ort,
       vocabV1,
     );
   }
 
-  private japanese: Promise<JapaneseG2P> | null = null;
-
-  private loadJapanese(): Promise<JapaneseG2P> {
-    this.japanese ??= (async () => {
-      const { JapaneseG2P, JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
-      const files: Record<string, Uint8Array> = {};
-      // JapaneseG2P keeps views on these arrays (no copies): they belong to it from here.
-      for (const f of JAPANESE_DATA_FILES) files[f] = await this.platform.store.bytes(`${TEXT_DIR}/${f}`);
-      return JapaneseG2P.create(files);
-    })();
-    this.japanese.catch(() => { this.japanese = null; });
-    return this.japanese;
+  private async loadJapanese() {
+    const { JapaneseG2P, JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
+    const files: Record<string, Uint8Array> = {};
+    // JapaneseG2P keeps views on these arrays (no copies): they belong to it from here.
+    for (const f of JAPANESE_DATA_FILES) files[f] = await this.platform.store.bytes(`${TEXT_DIR}/${f}`);
+    return JapaneseG2P.create(files);
   }
 
-  private loadEspeak(lang: string): Promise<EspeakG2P> {
-    const files = async (l: string) => {
-      const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
+  /** The shared espeak-ng, created with the first language's files and given each new language's. */
+  private async loadEspeak(lang: string): Promise<EspeakG2P> {
+    const { EspeakG2P, espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
+    const read = async (files: string[]) => {
       const out: Record<string, Uint8Array> = {};
-      for (const f of espeakDataFilesFor(l)) out[f] = await this.platform.store.bytes(`${TEXT_DIR}/espeak-ng-data/${f}`);
+      for (const f of files) out[f] = await this.platform.store.bytes(`${TEXT_DIR}/espeak-ng-data/${f}`);
       return out;
     };
-    const prev = this.espeak;
-    const next = (async () => {
-      const { EspeakG2P } = await import('./frontend/espeak/EspeakG2P');
-      const existing = prev ? await prev.catch(() => null) : null;
-      if (existing) {
-        if (!existing.hasLanguage(lang)) existing.addFiles(await files(lang));
-        return existing;
-      }
-      return EspeakG2P.create(await files(lang));
-    })();
-    this.espeak = next;
-    return next;
+    if (!this.espeak) {
+      const created = read(espeakDataFilesFor(lang)).then(files => EspeakG2P.create(files));
+      this.espeak = created;
+      created.catch(() => { if (this.espeak === created) this.espeak = null; });
+    }
+    const espeak = await this.espeak;
+    const missing = espeak.missingFiles(lang);
+    if (missing.length) espeak.addFiles(await read(missing));
+    return espeak;
   }
 
   private audioOutput(): Promise<AudioOutput> {
@@ -563,6 +553,16 @@ export class KittenTTS2Tiny {
   private ensureOpen(): void {
     if (this.disposed) throw KittenTTSError.engineNotReady();
   }
+}
+
+/** The repository's cache folder: "kitten-tts-2-nano". */
+function modelFolder(repoId: string): string {
+  return repoId.split('/')[1];
+}
+
+function modelRequest(repoId: string, options: KittenTTS2TinyOptions, file: string): AssetRequest {
+  const base = options.modelBaseURL ?? huggingFaceResolveURL(repoId);
+  return withToken({ key: `${modelFolder(repoId)}/${file}`, url: `${base}/${file}` }, options.hfToken);
 }
 
 function withToken(request: AssetRequest, token?: string): AssetRequest {

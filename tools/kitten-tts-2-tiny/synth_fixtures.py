@@ -6,16 +6,19 @@ ONNX graph's durations and waveform length. The graphs add random noise in the v
 so waveforms are not compared sample for sample; durations come from the text side and
 are deterministic.
 
-    python -I tools/kitten-tts-2-tiny/synth_fixtures.py OUT.json
+    python -I tools/kitten-tts-2-tiny/synth_fixtures.py [--out FILE]
+
+The output goes to tests/fixtures/kitten-tts-2-tiny-synth.json unless --out says otherwise.
 """
 from __future__ import annotations
 
+import argparse
 import json
-import sys
-
-import numpy as np
+from pathlib import Path
 
 from kittenml import KittenTTS
+
+OUT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "kitten-tts-2-tiny-synth.json"
 
 CASES = [
     ("kitten-tts-2-nano", "int8", "en", "Eleanor", "Hello there. Dr. Smith read 3 books on 2026-10-13 at 3:45pm."),
@@ -33,6 +36,9 @@ CASES.append(("kitten-tts-2-nano", "int8", "en", None, LONG))
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", type=Path, default=OUT)
+    args = ap.parse_args()
     out = []
     models = {}
     for model, weights, lang, voice, text in CASES:
@@ -53,7 +59,8 @@ def main() -> None:
         out.append({"model": model, "weights": weights, "language": lang, "voice": voice, "resolved": [lang_, vkey],
                     "text": text, "chunks": chunks, "runs": runs, "audioSamples": int(len(audio))})
         print(model, weights, lang, len(chunks), "chunks", len(audio) / 24000, "s")
-    json.dump({"cases": out}, open(sys.argv[1], "w", encoding="utf-8"), ensure_ascii=False, indent=0)
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump({"cases": out}, f, ensure_ascii=False, indent=0)
 
 
 if __name__ == "__main__":

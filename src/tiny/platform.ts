@@ -2,24 +2,12 @@
 // onnxruntime-react-native.
 
 import * as RNFS from 'react-native-fs';
-import { KittenTTSError, errorMessage } from '../KittenTTSError';
 import type { ProgressHandler } from '../loader/ModelDownloader';
+import type { AssetRequest, TinyAssetStore, TinyFileSource, TinyPlatform, TinyPlatformOptions } from './assets';
+import { Downloader, readOnlyStore, unpack } from './assets';
 import type { OrtLike } from './ort';
-import type { AssetRequest, TinyAssetStore } from './assets';
-import { aggregateProgress, inBatches, readOnlyStore, unpack } from './assets';
-import { utf8Decode } from './frontend/english/hash';
+import { utf8Decode } from './utf8';
 
-export interface TinyPlatformOptions {
-  storageDirectory?: string;
-  downloadRetries?: number;
-}
-
-export interface TinyPlatform {
-  ort: OrtLike;
-  store: TinyAssetStore;
-}
-
-const RETRY_DELAY_MS = 750;
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 declare const atob: ((data: string) => string) | undefined;
@@ -78,13 +66,6 @@ async function readText(path: string): Promise<string> {
   }
 }
 
-const SLICE = 4 * 1024 * 1024;
-
-/**
- * A file's bytes. Big files (Japanese's 42 MB cost table) are read in 4 MB slices, so the
- * base64 and binary strings in between never hold more than one slice: memory peaks near
- * the file's own size instead of three to four times it.
- */
 /**
  * Writes bytes in 3 MB slices (a multiple of 3, so each slice is whole base64). One
  * writeFile of a 42 MB file passed a 56 MB string to Java, which ran out of its 192 MB
@@ -98,6 +79,13 @@ async function writeBytes(path: string, data: Uint8Array): Promise<void> {
   }
 }
 
+const SLICE = 4 * 1024 * 1024;
+
+/**
+ * A file's bytes. Big files (Japanese's 42 MB cost table) are read in 4 MB slices, so the
+ * base64 and binary strings in between never hold more than one slice: memory peaks near
+ * the file's own size instead of three to four times it.
+ */
 async function readBytes(path: string): Promise<Uint8Array> {
   const size = Number((await RNFS.stat(path)).size);
   if (size <= SLICE) return bytesOf(binaryString(await RNFS.readFile(path, 'base64')));
@@ -110,63 +98,54 @@ async function readBytes(path: string): Promise<Uint8Array> {
 }
 
 class RNFSAssetStore implements TinyAssetStore {
-  constructor(private readonly root: string, private readonly retries: number) {}
+  private readonly downloader: Downloader;
+
+  constructor(private readonly root: string, retries: number) {
+    this.downloader = new Downloader(retries, key => RNFS.exists(this.path(key)), (f, progress) => this.fetchOne(f, progress));
+  }
 
   private path(key: string): string {
     return `${this.root}/${key}`;
   }
 
-  async filePath(key: string): Promise<string | undefined> {
-    return (await RNFS.exists(this.path(key))) ? this.path(key) : undefined;
+  ensure(files: readonly AssetRequest[], onProgress?: ProgressHandler): Promise<void> {
+    return this.downloader.ensure(files, onProgress);
   }
 
-  has(key: string): Promise<boolean> {
-    return RNFS.exists(this.path(key));
-  }
-
-  async ensure(files: readonly AssetRequest[], onProgress?: ProgressHandler): Promise<void> {
-    const missing: AssetRequest[] = [];
-    for (const f of files) if (!(await this.has(f.key))) missing.push(f);
-    const progress = aggregateProgress(onProgress);
-    await inBatches(missing, 4, f => this.download(f, progress));
-  }
-
-  private async download(f: AssetRequest, progress: (key: string, w: number, t: number) => void): Promise<void> {
+  /** Download one file to a temporary name, unpack and check it, then move it in place. */
+  private async fetchOne(f: AssetRequest, progress: (written: number, total: number) => void): Promise<void> {
     const target = this.path(f.key);
     const temp = `${target}.download`;
     await RNFS.mkdir(target.slice(0, target.lastIndexOf('/')));
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= this.retries; attempt++) {
-      try {
-        await RNFS.unlink(temp).catch(() => {});
-        const job = RNFS.downloadFile({
-          fromUrl: f.url,
-          toFile: temp,
-          headers: f.headers,
-          progressDivider: 1,
-          connectionTimeout: 30_000,
-          readTimeout: 30_000,
-          backgroundTimeout: 10 * 60_000,
-          progress: e => { if (e.contentLength > 0) progress(f.key, e.bytesWritten, e.contentLength); },
-        });
-        const res = await job.promise;
-        if (res.statusCode !== 200) throw new Error(`HTTP ${res.statusCode} downloading ${f.url}`);
-        if (f.gzip) {
-          // Unpacked once here, so every later load reads the plain file.
-          await writeBytes(temp, unpack(f, await readBytes(temp)));
-        } else if (f.size !== undefined) {
-          const stat = await RNFS.stat(temp);
-          if (Number(stat.size) !== f.size) throw new Error(`${f.url}: expected ${f.size} bytes, got ${stat.size}`);
-        }
-        await RNFS.moveFile(temp, target);
-        return;
-      } catch (error) {
-        lastError = error;
-        await RNFS.unlink(temp).catch(() => {});
-        if (attempt < this.retries) await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt));
+    try {
+      await RNFS.unlink(temp).catch(() => {});
+      const res = await RNFS.downloadFile({
+        fromUrl: f.url,
+        toFile: temp,
+        headers: f.headers,
+        progressDivider: 1,
+        connectionTimeout: 30_000,
+        readTimeout: 30_000,
+        backgroundTimeout: 10 * 60_000,
+        progress: e => { if (e.contentLength > 0) progress(e.bytesWritten, e.contentLength); },
+      }).promise;
+      if (res.statusCode !== 200) throw new Error(`HTTP ${res.statusCode} downloading ${f.url}`);
+      if (f.gzip) {
+        // Unpacked once here, so every later load reads the plain file.
+        await writeBytes(temp, unpack(f, await readBytes(temp)));
+      } else if (f.size !== undefined) {
+        const stat = await RNFS.stat(temp);
+        if (Number(stat.size) !== f.size) throw new Error(`${f.url}: expected ${f.size} bytes, got ${stat.size}`);
       }
+      await RNFS.moveFile(temp, target);
+    } catch (error) {
+      await RNFS.unlink(temp).catch(() => {});
+      throw error;
     }
-    throw KittenTTSError.downloadFailed(`Failed after ${this.retries} attempts: ${errorMessage(lastError)}`, lastError);
+  }
+
+  async filePath(key: string): Promise<string | undefined> {
+    return (await RNFS.exists(this.path(key))) ? this.path(key) : undefined;
   }
 
   text(key: string): Promise<string> {
@@ -177,14 +156,13 @@ class RNFSAssetStore implements TinyAssetStore {
     return readBytes(this.path(key));
   }
 
-  async clear(prefix: string): Promise<void> {
-    await RNFS.unlink(this.path(prefix)).catch(() => {});
+  async clear(key: string): Promise<void> {
+    await RNFS.unlink(this.path(key)).catch(() => {});
   }
 
-  local(directory: string): TinyAssetStore {
+  local(directory: string): TinyFileSource {
     const dir = directory.replace(/^file:\/\//, '').replace(/\/+$/, '');
-    return readOnlyStore(key => `${dir}/${key}`, p => RNFS.exists(p), { text: readText, bytes: readBytes },
-      b => utf8Decode(b), this, true);
+    return readOnlyStore(key => `${dir}/${key}`, p => RNFS.exists(p), { text: readText, bytes: readBytes }, true);
   }
 
   async writeFile(path: string, data: Uint8Array): Promise<void> {

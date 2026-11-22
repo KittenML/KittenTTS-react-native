@@ -12,9 +12,22 @@
 //           i ~ ı İ, s ~ ſ, k ~ K (JS's `i` flag differs, so it is not used)
 // Python exceptions that can escape normalize() (int() of a 4301+ digit number,
 // "1..2°C", an overflowing ordinal, a unit spelled with "İ") are thrown as PyError
-// with the same name.
+// with the same name. The engine imports this module only after checking that the JS
+// engine builds Unicode regexes (older Hermes cannot).
 
-import { num2words, PyError } from './Num2Words';
+import { num2words } from './Num2Words';
+import {
+  decimalValue,
+  floatToInt,
+  ND_CLASS,
+  own,
+  PY_SPACE_CLASS,
+  PyError,
+  pyIsSpaceChar,
+  pyNormalize,
+  pyStripSpace,
+  replaceAll,
+} from '../pystr';
 
 const r = String.raw;
 
@@ -22,25 +35,10 @@ const r = String.raw;
 
 /** Python 3 str-pattern \w: str.isalnum() or "_" = Unicode categories L* and N*. */
 const W = r`\p{L}\p{N}_`;
-/** Python str.isspace() / re \s. */
-const S = r`\t\n\v\f\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000`;
-/** First code point of every run of ten Nd digits (Python 3.12, Unicode 15.0). */
-const ND_ZEROS = [
-  0x30, 0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6,
-  0xd66, 0xde6, 0xe50, 0xed0, 0xf20, 0x1040, 0x1090, 0x17e0, 0x1810, 0x1946, 0x19d0,
-  0x1a80, 0x1a90, 0x1b50, 0x1bb0, 0x1c40, 0x1c50, 0xa620, 0xa8d0, 0xa900, 0xa9d0,
-  0xa9f0, 0xaa50, 0xabf0, 0xff10, 0x104a0, 0x10d30, 0x11066, 0x110f0, 0x11136,
-  0x111d0, 0x112f0, 0x11450, 0x114d0, 0x11650, 0x116c0, 0x11730, 0x118e0, 0x11950,
-  0x11c50, 0x11d50, 0x11da0, 0x11f50, 0x16a60, 0x16ac0, 0x16b50, 0x1d7ce, 0x1d7d8,
-  0x1d7e2, 0x1d7ec, 0x1d7f6, 0x1e140, 0x1e2f0, 0x1e4f0, 0x1e950, 0x1fbf0,
-];
-
-function cpEscape(cp: number): string {
-  return cp > 0xffff ? `\\u{${cp.toString(16)}}` : `\\u${cp.toString(16).padStart(4, '0')}`;
-}
-
+/** Python \s. */
+const S = PY_SPACE_CLASS;
 /** Python \d. */
-const D = ND_ZEROS.map((z) => `${cpEscape(z)}-${cpEscape(z + 9)}`).join('');
+const D = ND_CLASS;
 /** Python \b. */
 const B = `(?:(?<=[${W}])(?![${W}])|(?<![${W}])(?=[${W}]))`;
 /** Letters Python's re.I matches for each ASCII letter, beyond its two cases. */
@@ -154,25 +152,10 @@ function sub(re: RegExp, s: string, fn: (m: Match) => string): string {
   });
 }
 
-function replaceAll(s: string, from: string, to: string): string {
-  return s.split(from).join(to);
-}
-
 // ---- Python str / int helpers ----
 
-const RE_SPACE_CHAR = new RegExp(`^[${S}]$`, 'u');
-const RE_STRIP = new RegExp(`^[${S}]+|[${S}]+$`, 'gu');
 /** str.isupper() for one character: Lu plus Other_Uppercase (Unicode 15.0). */
-const RE_UPPER_CHAR = new RegExp(
-  r`^[\p{Lu}Ⅰ-ⅯⒶ-Ⓩ\u{1f130}-\u{1f149}\u{1f150}-\u{1f169}\u{1f170}-\u{1f189}]$`,
-  'u',
-);
-const RE_HAS_DIGIT = new RegExp(`[${D}]`, 'u');
-const RE_NOT_DIGIT = new RegExp(`[^${D}]`, 'gu');
-
-function pyStrip(s: string): string {
-  return s.replace(RE_STRIP, '');
-}
+const RE_UPPER_CHAR = /^[\p{Lu}Ⅰ-ⅯⒶ-Ⓩ\u{1f130}-\u{1f149}\u{1f150}-\u{1f169}\u{1f170}-\u{1f189}]$/u;
 
 /** s[:1] by code point */
 function firstChar(s: string): string {
@@ -185,24 +168,11 @@ function chars(s: string): string[] {
   return Array.from(s);
 }
 
-function digitValue(ch: string): number {
-  const cp = ch.codePointAt(0) as number;
-  let lo = 0;
-  let hi = ND_ZEROS.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (ND_ZEROS[mid] <= cp) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  if (hi >= 0 && cp - ND_ZEROS[hi] < 10) return cp - ND_ZEROS[hi];
-  return -1;
-}
-
 /** Any Nd digits as ASCII (what int() / float() do first). */
 function asciiDigits(s: string): string {
   let out = '';
   for (const ch of chars(s)) {
-    const v = digitValue(ch);
+    const v = decimalValue(ch);
     out += v >= 0 ? String(v) : ch;
   }
   return out;
@@ -214,7 +184,7 @@ const INT_MAX_STR_DIGITS = 4300;
 /** int(s) for the digit strings the rules capture (Unicode digits allowed). */
 function pyInt(s: string): bigint {
   const cs = chars(s);
-  if (cs.length === 0 || cs.some((c) => digitValue(c) < 0)) {
+  if (cs.length === 0 || cs.some((c) => decimalValue(c) < 0)) {
     throw new PyError('ValueError', `invalid literal for int() with base 10: '${s}'`);
   }
   if (cs.length > INT_MAX_STR_DIGITS) {
@@ -234,13 +204,6 @@ function pyIntN(s: string): number {
 /** float(s) for a digits[.digits] string. */
 function pyFloat(s: string): number {
   return Number(asciiDigits(s));
-}
-
-/** int(x) for a float */
-function floatToInt(x: number): bigint {
-  if (Number.isNaN(x)) throw new PyError('ValueError', 'cannot convert float NaN to integer');
-  if (!Number.isFinite(x)) throw new PyError('OverflowError', 'cannot convert float infinity to integer');
-  return BigInt(Math.trunc(x));
 }
 
 /** float(n) for an int: raises when it does not fit a double. */
@@ -309,10 +272,6 @@ const ROMAN: Record<string, number> = {
 };
 const ROMAN_CTX = r`(?:chapter|section|part|volume|book|act|phase|appendix|world war|type|class|figure|table|step|stage)`;
 
-function has(obj: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(obj, key);
-}
-
 // ---- number helpers ----
 
 function card(n: bigint | number): string {
@@ -374,8 +333,8 @@ function dates(s: string): string {
 function keepFinalDot(m: Match, out: string): string {
   if (!m.text.endsWith('.')) return out;
   const rest = m.string.slice(m.end);
-  const stripped = pyStrip(rest);
-  if (stripped === '' || (RE_SPACE_CHAR.test(firstChar(rest)) && RE_UPPER_CHAR.test(firstChar(stripped)))) {
+  const stripped = pyStripSpace(rest);
+  if (stripped === '' || (pyIsSpaceChar(firstChar(rest)) && RE_UPPER_CHAR.test(firstChar(stripped)))) {
     return out + '.';
   }
   return out;
@@ -399,7 +358,8 @@ function times(s: string): string {
     }
     let spoken: string;
     if (mi === 0) {
-      spoken = !suffix ? `${card(h <= 12 || ampm ? h : h)} o'clock` : `${card(h <= 12 ? h : h - 12)}`;
+      // Python: _card(h if h <= 12 or ampm else h), the same either way
+      spoken = !suffix ? `${card(h)} o'clock` : `${card(h <= 12 ? h : h - 12)}`;
     } else if (mi < 10) {
       spoken = `${card(h <= 12 || !suffix ? h : h - 12)} oh ${card(mi)}`;
     } else {
@@ -426,7 +386,7 @@ const RE_PHONE = pyRe(r`\b(?:\+?1[-.\s]?)?(?:\(\d{3}\)|\d{3})[-.\s]\d{3}[-.\s]?\
 
 function phones(s: string): string {
   return sub(RE_PHONE, s, (m) => {
-    const digits = chars(m.text.replace(RE_NOT_DIGIT, ''));
+    const digits = chars(m.text).filter((c) => decimalValue(c) >= 0);
     if (!(digits.length >= 7 && digits.length <= 11)) return m.text;
     const groups: string[] = [];
     let i = 0;
@@ -487,7 +447,7 @@ function magnitudes(s: string): string {
 
 function decimal(tok: string): string {
   tok = replaceAll(tok, ',', '');
-  if (!RE_HAS_DIGIT.test(tok)) return tok; // backstop: never raise out of the text front end
+  if (!chars(tok).some((c) => decimalValue(c) >= 0)) return tok; // backstop: never raise out of the text front end
   const k = tok.indexOf('.');
   if (k >= 0) {
     const a = tok.slice(0, k);
@@ -505,7 +465,7 @@ function fractions(s: string): string {
     const a = pyIntN(m.g(1) as string);
     const b = pyIntN(m.g(2) as string);
     const key = `${a}/${b}`;
-    if (has(FRACTIONS, key)) return FRACTIONS[key];
+    if (own(FRACTIONS, key)) return FRACTIONS[key];
     if (b === 0) return m.text;
     return `${card(a)} ${ordinal(b)}${a !== 1 ? 's' : ''}`;
   });
@@ -527,10 +487,10 @@ function units(s: string): string {
     // str.lower(): "mİ" (matched by re.I) lowers to "mi\u0307", which is no key -> KeyError
     const unit = (m.g(2) as string).toLowerCase();
     const val = decimal(n);
-    if (!has(UNITS, unit)) throw new PyError('KeyError', `'${unit}'`);
+    if (!own(UNITS, unit)) throw new PyError('KeyError', `'${unit}'`);
     let word = UNITS[unit];
     // rstrip("s") drops every trailing s: "1 in" -> "one inche". Kept for parity.
-    if (['1', '1.0'].includes(replaceAll(n, ',', ''))) word = word.endsWith('s') ? word.replace(/s+$/, '') : word;
+    if (['1', '1.0'].includes(replaceAll(n, ',', ''))) word = word.replace(/s+$/, '');
     return `${val} ${word}`;
   });
   s = sub(RE_DEGREES, s, (m) => {
@@ -578,7 +538,7 @@ const RE_ROMAN = pyRe(r`\b(` + ROMAN_CTX + r`)\s+([IVX]{1,4})\b`, true);
 function romans(s: string): string {
   return sub(RE_ROMAN, s, (m) => {
     const key = (m.g(2) as string).toLowerCase();
-    return has(ROMAN, key) ? `${m.g(1)} ${card(ROMAN[key])}` : m.text;
+    return own(ROMAN, key) ? `${m.g(1)} ${card(ROMAN[key])}` : m.text;
   });
 }
 
@@ -625,7 +585,7 @@ const RE_MULTI_SPACE = pyRe(r`\s{2,}`);
 
 /** Expand `text` to spoken form. Keeps . , ! ? ; and dashes for prosody. */
 export function normalize(text: string): string {
-  let s = String(text).normalize('NFKC');
+  let s = pyNormalize(String(text), 'NFKC');
   s = replaceAll(s, '’', "'");
   s = replaceAll(s, '‘', "'");
   s = replaceAll(s, '“', '"');
@@ -660,6 +620,6 @@ export function normalize(text: string): string {
   s = sub(RE_SPACE_BEFORE_PUNCT, s, (m) => m.g(1) as string);
   // no space BEFORE another punctuation mark: "Mon.," must not become "Mon. ,"
   s = sub(RE_PUNCT_NEEDS_SPACE, s, (m) => `${m.g(1)} `);
-  s = pyStrip(s.replace(RE_MULTI_SPACE, () => ' '));
+  s = pyStripSpace(s.replace(RE_MULTI_SPACE, () => ' '));
   return s;
 }

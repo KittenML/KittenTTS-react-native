@@ -4,20 +4,25 @@
 For each text: spaCy's tokens and tags (on the normalised text), misaki's raw phoneme
 string, and the front end's final phonemes (EnglishG2P with the nano/pico v1 vocab).
 
-    python -I tools/kitten-tts-2-tiny/english_fixtures.py OUT.json [TEXTS.json]
+    python -I tools/kitten-tts-2-tiny/english_fixtures.py [TEXTS.json] [--out FILE]
 
-TEXTS.json is a JSON list of strings; without it, the built-in sentences are used.
+TEXTS.json is a JSON list of strings; without it, the built-in sentences are used. The output
+goes to tests/fixtures/kitten-tts-2-tiny-english.json unless --out says otherwise (a big run
+belongs outside the repo: see KITTEN_TTS_2_TINY_ENGLISH_FIXTURE in docs/development.md).
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
-import sys
+from pathlib import Path
 
 from huggingface_hub import snapshot_download
 
 from kittenml.kittentts2_tiny.frontend import english
 from kittenml.kittentts2_tiny.frontend.tts_norm import normalize
+
+OUT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "kitten-tts-2-tiny-english.json"
 
 BUILTIN = [
     "Hello there.",
@@ -57,12 +62,22 @@ BUILTIN = [
     "I scored 3-2 in the match, 10-20 people came.",
     "OK, so the 2 of us went 2gether.",
     "Emoji 😀 and symbols like © ™ § appear.",
+    # Digits other than 0-9 that str.isdigit() accepts, and combining marks (only a nonzero
+    # combining class is dropped; other marks split words).
+    "Step \u2776 is easy.",
+    "Press \u2460 then \u2780, or \u24f5 and \u2474.",
+    "Ethiopic \u1369 and \u19da and \u2488 count.",
+    "zork\ufe0fblat",
+    "zork\u0301blat and qwix\u0489ip",
 ]
 
 
 def main() -> None:
-    out_path = sys.argv[1]
-    texts = json.load(open(sys.argv[2])) if len(sys.argv) > 2 else BUILTIN
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("texts", nargs="?", type=Path, help="JSON list of strings (default: the built-in sentences)")
+    ap.add_argument("--out", type=Path, default=OUT)
+    args = ap.parse_args()
+    texts = json.loads(args.texts.read_text(encoding="utf-8")) if args.texts else BUILTIN
     root = snapshot_download("KittenML/kitten-tts-2-nano", allow_patterns=["g2p/*", "g2p/**", "vocab.json"])
     vocab = json.load(open(os.path.join(root, "vocab.json"), encoding="utf-8"))
     v1 = {k: v for k, v in vocab.items() if k != "ʉ"}
@@ -81,8 +96,9 @@ def main() -> None:
             "misaki": raw,
             "phonemes": res.phonemes,
         })
-    json.dump({"cases": cases}, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
-    print(len(cases), "cases")
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump({"cases": cases}, f, ensure_ascii=False, indent=0)
+    print(f"wrote {args.out} ({len(cases)} cases)")
 
 
 if __name__ == "__main__":

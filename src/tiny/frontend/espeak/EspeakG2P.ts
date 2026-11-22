@@ -10,7 +10,7 @@
  *
  * Every Python step is ported here, in order, with the Python names in the
  * comments. Python string semantics that differ from JavaScript are spelled out:
- * str.strip()/split() and the regex \s use Python's whitespace set (pyIsSpace),
+ * str.strip()/split() and the regex \s use Python's whitespace set (isPySpace),
  * the regex `.` does not match "\n" only, and the punctuation regex (which has a
  * lookbehind) is a hand-written scanner.
  *
@@ -22,6 +22,8 @@
  */
 import createEspeakNgModule from './generated/espeakng';
 import type { EspeakNgModule } from './generated/espeakng';
+import { FOLD_V1, FOLD_V2, applyFold } from '../phonemize';
+import { isPySpace, pyStripSpace, replaceAll } from '../pystr';
 
 /** espeak-ng-data files: path relative to espeak-ng-data/ -> bytes. */
 export type EspeakDataFiles = Record<string, Uint8Array>;
@@ -37,64 +39,41 @@ const PHONEME_MODE = 0x02 | 0x80 | (0x361 << 8);
 const BASE_FILES = ['phontab', 'phonindex', 'phondata', 'intonations'];
 
 /** Languages each phonemizer version sends to espeak (the others use misaki). */
+const V1_LANGS = ['de', 'es', 'it', 'pt', 'ru', 'hi', 'fr'];
 const ESPEAK_LANGS: Record<PhonemizerVersion, readonly string[]> = {
-  v1: ['de', 'es', 'it', 'pt', 'ru', 'hi', 'fr'],
-  v2: ['de', 'es', 'it', 'pt', 'ru', 'hi', 'fr', 'da', 'fi', 'nl', 'sv', 'sw', 'tr', 'ko'],
-};
-
-/** phonemize_v1.ESPEAK_VOICE / phonemize_v2.ESPEAK_VOICE for those languages. */
-const ESPEAK_VOICE: Record<string, string> = {
-  es: 'es', fr: 'fr-fr', it: 'it', pt: 'pt-br', hi: 'hi', de: 'de', nl: 'nl',
-  ru: 'ru', tr: 'tr', sv: 'sv', da: 'da', fi: 'fi', sw: 'sw', ko: 'ko',
+  v1: V1_LANGS,
+  v2: [...V1_LANGS, 'da', 'fi', 'nl', 'sv', 'sw', 'tr', 'ko'],
 };
 
 /**
- * The voice phonemizer's EspeakWrapper.set_voice(code) selects with the full
- * espeak-ng 1.52.0 data (the first non-mbrola voice espeak_ListVoices lists
- * for the code), and the dictionary it loads.
+ * Per language: the voice code phonemize_vN.ESPEAK_VOICE gives it (in the comment),
+ * the voice file phonemizer's EspeakWrapper.set_voice(code) selects with the full
+ * espeak-ng 1.52.0 data (the first non-mbrola voice espeak_ListVoices lists for the
+ * code), and the dictionary that voice loads.
  */
 const VOICES: Record<string, { voice: string; dict: string }> = {
-  de: { voice: 'gmw/de', dict: 'de_dict' },
-  es: { voice: 'roa/es', dict: 'es_dict' },
-  it: { voice: 'roa/it', dict: 'it_dict' },
-  'pt-br': { voice: 'roa/pt-BR', dict: 'pt_dict' },
-  ru: { voice: 'zle/ru', dict: 'ru_dict' },
-  hi: { voice: 'inc/hi', dict: 'hi_dict' },
-  'fr-fr': { voice: 'roa/fr', dict: 'fr_dict' },
-  da: { voice: 'gmq/da', dict: 'da_dict' },
-  fi: { voice: 'urj/fi', dict: 'fi_dict' },
-  nl: { voice: 'gmw/nl', dict: 'nl_dict' },
-  sv: { voice: 'gmq/sv', dict: 'sv_dict' },
-  sw: { voice: 'bnt/sw', dict: 'sw_dict' },
-  tr: { voice: 'trk/tr', dict: 'tr_dict' },
-  ko: { voice: 'ko', dict: 'ko_dict' },
+  de: { voice: 'gmw/de', dict: 'de_dict' },       // de
+  es: { voice: 'roa/es', dict: 'es_dict' },       // es
+  it: { voice: 'roa/it', dict: 'it_dict' },       // it
+  pt: { voice: 'roa/pt-BR', dict: 'pt_dict' },    // pt-br
+  ru: { voice: 'zle/ru', dict: 'ru_dict' },       // ru
+  hi: { voice: 'inc/hi', dict: 'hi_dict' },       // hi
+  fr: { voice: 'roa/fr', dict: 'fr_dict' },       // fr-fr
+  da: { voice: 'gmq/da', dict: 'da_dict' },       // da
+  fi: { voice: 'urj/fi', dict: 'fi_dict' },       // fi
+  nl: { voice: 'gmw/nl', dict: 'nl_dict' },       // nl
+  sv: { voice: 'gmq/sv', dict: 'sv_dict' },       // sv
+  sw: { voice: 'bnt/sw', dict: 'sw_dict' },       // sw
+  tr: { voice: 'trk/tr', dict: 'tr_dict' },       // tr
+  ko: { voice: 'ko', dict: 'ko_dict' },           // ko
 };
 
 // ---------------------------------------------------------------------------
-// kittenml tables (phonemize_v1.py, phonemize_v2.py, espeak.py), in Python's
-// dict order: the replacements run one after another.
+// kittenml and misaki tables (phonemize_v2.py, espeak.py), in Python's dict order:
+// the replacements run one after another.
 
-const FOLD_V1: ReadonlyArray<readonly [string, string]> = [
-  ['\u032a', ''], ['\u0329', ''], ['\u030d', ''], ['\u032f', ''],
-  ['\u026d', 'l'], ['\u026b', 'l'], ['\u0275', '\u00f8'], ['\u03b5', '\u025b'],
-  ['\u0005', ''], ['\u0006', ''], ['\u0007', ''], ['\u0008', ''],
-  ['{', ''], ['}', ''], ['[', ''], [']', ''],
-  ['\u00bf', ''], ['\u00a1', ''], ['\u202f', ' '],
-];
-
-/** phonemize_v2.FOLD = {**v1.FOLD, **FOLD_EXTRA} (no key of FOLD_EXTRA is in v1.FOLD). */
-const FOLD_V2: ReadonlyArray<readonly [string, string]> = [
-  ...FOLD_V1,
-  ['\u2009', ' '], ['\t', ' '], ['\u00ab', ''], ['\u00bb', ''],
-  ['\u2018', ''], ['\u2019', ''], ["'", ''], ['~', ''], ['\u00b7', ''], ['#', ''],
-  ['g', '\u0261'],
-];
-
-/** phonemize_v2.TEXT_MAP (ar is not an espeak language here, kept for completeness). */
-const TEXT_MAP_V2: Record<string, ReadonlyArray<readonly [string, string]>> = {
-  hi: [['\u0964', '.'], ['\u0965', '.']],
-  ar: [['\u061f', '?']],
-};
+/** phonemize_v2.TEXT_MAP for the espeak languages (only Hindi has an entry). */
+const TEXT_MAP_V2_HI: ReadonlyArray<readonly [string, string]> = [['\u0964', '.'], ['\u0965', '.']];
 
 /** misaki EspeakG2P.e2m for version None, sorted by key as in Python. */
 const E2M: ReadonlyArray<readonly [string, string]> = [
@@ -106,39 +85,8 @@ const E2M: ReadonlyArray<readonly [string, string]> = [
 // ---------------------------------------------------------------------------
 // Python string helpers
 
-/** Python str.isspace() for one UTF-16 unit (every Python whitespace is in the BMP). */
-function pyIsSpace(c: number): boolean {
-  return (
-    (c >= 0x09 && c <= 0x0d) ||
-    (c >= 0x1c && c <= 0x20) ||
-    c === 0x85 ||
-    c === 0xa0 ||
-    c === 0x1680 ||
-    (c >= 0x2000 && c <= 0x200a) ||
-    c === 0x2028 ||
-    c === 0x2029 ||
-    c === 0x202f ||
-    c === 0x205f ||
-    c === 0x3000
-  );
-}
-
 /** Python's \s inside a character class. */
 const PY_WS_CLASS = '\\t\\n\\v\\f\\r\\x1c-\\x20\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000';
-
-/** Python str.strip() with no argument. */
-function pyStrip(s: string): string {
-  let start = 0;
-  let end = s.length;
-  while (start < end && pyIsSpace(s.charCodeAt(start))) start++;
-  while (end > start && pyIsSpace(s.charCodeAt(end - 1))) end--;
-  return start === 0 && end === s.length ? s : s.slice(start, end);
-}
-
-/** Python str.replace(a, b) for a non-empty `a`. */
-function replaceAll(s: string, a: string, b: string): string {
-  return s.indexOf(a) < 0 ? s : s.split(a).join(b);
-}
 
 function isAsciiDigit(c: number): boolean {
   return c >= 0x30 && c <= 0x39;
@@ -182,7 +130,7 @@ function findMarks(s: string): Array<[number, number]> {
   const n = s.length;
   let i = 0;
   while (i < n) {
-    const ws = pyIsSpace(s.charCodeAt(i));
+    const ws = isPySpace(s.charCodeAt(i));
     if (!ws && !isMarkAt(s, i)) {
       i++;
       continue;
@@ -190,7 +138,7 @@ function findMarks(s: string): Array<[number, number]> {
     let j = i;
     let hasMark = false;
     while (j < n) {
-      if (pyIsSpace(s.charCodeAt(j))) {
+      if (isPySpace(s.charCodeAt(j))) {
         j++;
       } else if (isMarkAt(s, j)) {
         hasMark = true;
@@ -233,7 +181,7 @@ function isInline(mark: Part | undefined): boolean {
   let any = false;
   for (let i = 0; i < mark.length; i++) {
     const c = mark.charCodeAt(i);
-    if (pyIsSpace(c)) continue; // ''.join(mark.split())
+    if (isPySpace(c)) continue; // ''.join(mark.split())
     if (!INLINE_MARKS.has(c)) return false;
     any = true;
   }
@@ -323,7 +271,7 @@ function restore(text: string[], lines: Part[][], context: Array<[number[], stri
     if (!usable) continue;
     const parts = contextParts(text, group, phonemized);
     if (parts !== null) {
-      for (let k = 0; k < group.length && k < parts.length; k++) inContext.set(group[k], parts[k]);
+      for (let k = 0; k < group.length; k++) inContext.set(group[k], parts[k]);
     }
   }
 
@@ -358,13 +306,13 @@ const ESPEAK_FLAGS_RE = /\([^\n]+?\)/g;
 
 /** EspeakBackend._postprocess_line(line, num, separator, strip=False) with tie '^'. */
 function postprocessLine(raw: string): string {
-  let line = replaceAll(replaceAll(pyStrip(raw), '\n', ' '), '  ', ' ');
+  let line = replaceAll(replaceAll(pyStripSpace(raw), '\n', ' '), '  ', ' ');
   if (line.indexOf('__') >= 0) line = line.replace(/_+/g, '_');
   line = replaceAll(line, '_ ', ' ');
   // RemoveFlags.process: drop the (lang) flags of espeak's language switches
   line = line.replace(ESPEAK_FLAGS_RE, '');
   if (!line) return '';
-  const words = line.split(' ').map((word) => replaceAll(pyStrip(word), '\u0361', '^'));
+  const words = line.split(' ').map((word) => replaceAll(pyStripSpace(word), '\u0361', '^'));
   return words.join(' ') + ' ';
 }
 
@@ -382,19 +330,13 @@ function checkPath(rel: string): void {
   }
 }
 
-function espeakCode(lang: string, version: PhonemizerVersion): string {
+function checkLanguage(lang: string, version: PhonemizerVersion): void {
   if (version !== 'v1' && version !== 'v2') {
     throw new Error(`EspeakG2P: unknown phonemizer version ${JSON.stringify(version)}`);
   }
   if (ESPEAK_LANGS[version].indexOf(lang) < 0) {
     throw new Error(`EspeakG2P: language ${JSON.stringify(lang)} does not go through espeak in phonemizer ${version}`);
   }
-  return ESPEAK_VOICE[lang];
-}
-
-/** Languages each phonemizer version sends through espeak-ng. */
-export function espeakLanguages(version: PhonemizerVersion): string[] {
-  return ESPEAK_LANGS[version].slice();
 }
 
 /**
@@ -411,20 +353,15 @@ export function espeakLanguages(version: PhonemizerVersion): string[] {
  */
 const SHARED_DICTS = ['en_dict', 'el_dict'];
 
-function filesForVoice(code: string): string[] {
-  const { voice, dict } = VOICES[code];
-  return [...BASE_FILES, `lang/${voice}`, dict, ...SHARED_DICTS];
-}
-
 /**
  * The espeak-ng-data files (paths relative to espeak-ng-data/) one language
  * needs, base files included. Measured by tracing every file espeak-ng opens;
  * see SHARED_DICTS for the dictionaries of other languages.
  */
 export function espeakDataFilesFor(lang: string): string[] {
-  const code = ESPEAK_VOICE[lang];
-  if (code === undefined) throw new Error(`EspeakG2P: no espeak voice for language ${JSON.stringify(lang)}`);
-  return filesForVoice(code);
+  const v = VOICES[lang];
+  if (v === undefined) throw new Error(`EspeakG2P: no espeak voice for language ${JSON.stringify(lang)}`);
+  return [...BASE_FILES, `lang/${v.voice}`, v.dict, ...SHARED_DICTS];
 }
 
 export class EspeakG2P {
@@ -474,9 +411,9 @@ export class EspeakG2P {
     this.voice = null;
   }
 
-  /** Whether every file espeakDataFilesFor(lang) lists has been given. */
-  hasLanguage(lang: string): boolean {
-    return espeakDataFilesFor(lang).every((f) => this.files.has(f));
+  /** The files espeakDataFilesFor(lang) lists that have not been given yet. */
+  missingFiles(lang: string): string[] {
+    return espeakDataFilesFor(lang).filter((f) => !this.files.has(f));
   }
 
   /** The espeak-ng version string ("1.52.0"). */
@@ -491,13 +428,10 @@ export class EspeakG2P {
    */
   phonemizeLang(text: string, lang: string, version: PhonemizerVersion): string {
     this.live();
-    const code = espeakCode(lang, version);
-    if (version === 'v2') {
-      for (const [src, dst] of TEXT_MAP_V2[lang] ?? []) text = replaceAll(text, src, dst);
-    }
+    checkLanguage(lang, version);
+    if (version === 'v2' && lang === 'hi') text = applyFold(text, TEXT_MAP_V2_HI);
     // phonemize(g2p, text)
-    let ps = pyStrip(this.misakiEspeak(text, code));
-    for (const [src, dst] of version === 'v1' ? FOLD_V1 : FOLD_V2) ps = replaceAll(ps, src, dst);
+    let ps = applyFold(pyStripSpace(this.misakiEspeak(text, lang)), version === 'v1' ? FOLD_V1 : FOLD_V2);
     if (version === 'v2' && lang === 'hi') {
       ps = replaceAll(ps, 'r.h', '\u027d\u02b0');
       ps = ps.replace(HI_R_DOT_IN_WORD, '\u027d');
@@ -506,7 +440,7 @@ export class EspeakG2P {
     return ps;
   }
 
-  /** Free the espeak-ng heap. The instance cannot be used afterwards. */
+  /** Drop espeak-ng (its heap is freed with this object). The instance cannot be used afterwards. */
   dispose(): void {
     this.module = null;
     this.files.clear();
@@ -514,11 +448,11 @@ export class EspeakG2P {
   }
 
   /** misaki EspeakG2P.__call__(text)[0] with version None. */
-  private misakiEspeak(text: string, code: string): string {
+  private misakiEspeak(text: string, lang: string): string {
     // Angles to curly quotes, parentheses to angles
     text = replaceAll(replaceAll(text, '\u00ab', '\u201c'), '\u00bb', '\u201d');
     text = replaceAll(replaceAll(text, '(', '\u00ab'), ')', '\u00bb');
-    let ps = pyStrip(this.backendPhonemize(text, code));
+    let ps = pyStripSpace(this.backendPhonemize(text, lang));
     for (const [oldS, newS] of E2M) ps = replaceAll(ps, oldS, newS);
     // Delete any remaining tie characters, hyphens
     ps = replaceAll(ps, '^', '');
@@ -528,8 +462,8 @@ export class EspeakG2P {
   }
 
   /** EspeakBackend.phonemize([text]) (BaseBackend.phonemize with njobs=1, strip=False). */
-  private backendPhonemize(text: string, code: string): string {
-    this.selectVoice(code);
+  private backendPhonemize(text: string, lang: string): string {
+    this.selectVoice(lang);
     // _phonemize_preprocess: Punctuation.preserve
     const chunks: string[] = [];
     const lines = [preserve(text, chunks)];
@@ -545,10 +479,10 @@ export class EspeakG2P {
     return restore(phonemized.slice(0, nchunks), lines, context)[0];
   }
 
-  private selectVoice(code: string): void {
-    const { voice } = VOICES[code];
+  private selectVoice(lang: string): void {
+    const { voice } = VOICES[lang];
     if (this.voice === voice) return;
-    const missing = filesForVoice(code).filter((f) => !this.files.has(f));
+    const missing = this.missingFiles(lang);
     if (missing.length > 0) {
       throw new Error(`EspeakG2P: missing espeak-ng-data files ${missing.join(', ')}`);
     }

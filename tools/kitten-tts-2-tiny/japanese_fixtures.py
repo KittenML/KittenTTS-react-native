@@ -11,7 +11,9 @@ strings (and throws where Python raises). Texts: sentences and paragraphs from J
 The fixture also holds, for a subset, cutlet's normalised text and fugashi's tokens (to test the MeCab port on
 its own), and NFKC cases (Python's unicodedata against the port's tables).
 
-    ~/.cache/kt2tiny/venv/bin/python -I tools/kitten-tts-2-tiny/japanese_fixtures.py
+    python -I tools/kitten-tts-2-tiny/japanese_fixtures.py [--out FILE]
+
+The output goes to tests/fixtures/kitten-tts-2-tiny-japanese.json unless --out says otherwise.
 """
 from __future__ import annotations
 
@@ -198,6 +200,7 @@ def nfkc_cases() -> list[list[str]]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--wiki-dir", type=Path, default=WIKI_DIR)
     ap.add_argument("--sentences", type=int, default=2000)
     ap.add_argument("--paragraphs", type=int, default=150)
@@ -260,8 +263,8 @@ def main() -> None:
         "tokens": tokens,
         "nfkc": nfkc_cases(),
     }
-    OUT.write_text(json.dumps(fixture, ensure_ascii=False, indent=0) + "\n", encoding="utf-8")
-    print(f"wrote {OUT} ({OUT.stat().st_size / 1e6:.2f} MB); errors raised by Python: {errors}")
+    args.out.write_text(json.dumps(fixture, ensure_ascii=False, indent=0) + "\n", encoding="utf-8")
+    print(f"wrote {args.out} ({args.out.stat().st_size / 1e6:.2f} MB); errors raised by Python: {errors}")
 
 
 if __name__ == "__main__":

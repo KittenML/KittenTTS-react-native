@@ -2,49 +2,27 @@
 // (tests/fixtures/kitten-tts-2-tiny-espeak.json, written by
 // tools/kitten-tts-2-tiny/espeak_fixtures.py).
 //
-// Needs, besides npm run build:test:
-//   npm run build:espeak && node scripts/copy-generated.js   (the espeak-ng JS runtime in lib/; the copy
-//                                                              step copies it even when it then fails on a
-//                                                              missing CEPhonemizer runtime)
-//   python -I tools/kitten-tts-2-tiny/espeak_data.py          (the espeak-ng-data files, 10.5 MB, not in
-//                                                              the repo; or set KITTENTTS_ESPEAK_DATA)
-// The tests are skipped when either is missing.
+// Needs the espeak-ng JS runtime (npm run build:espeak; npm run build:test copies it into lib/)
+// and KITTEN_TTS_2_TINY_DATA (tests/helpers/tiny-data.js). The tests skip without either.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
+const data = require('./helpers/tiny-data');
 
 const fixtures = require('./fixtures/kitten-tts-2-tiny-espeak.json');
 
 const runtime = path.join(__dirname, '..', 'lib', 'tiny', 'frontend', 'espeak', 'generated', 'espeakng-runtime.js');
-const dataRoot = (process.env.KITTENTTS_ESPEAK_DATA || process.env.KITTEN_TTS_2_TINY_DATA)
-  ? path.resolve(process.env.KITTENTTS_ESPEAK_DATA || process.env.KITTEN_TTS_2_TINY_DATA)
-  : path.join(os.homedir(), '.cache', 'kittentts-espeak-ng', 'data-1.52.0');
-const dataDir = fs.existsSync(path.join(dataRoot, 'espeak-ng-data'))
-  ? path.join(dataRoot, 'espeak-ng-data')
-  : dataRoot;
-
-let skip = false;
-if (!fs.existsSync(runtime)) {
-  skip = 'espeak-ng runtime missing: npm run build:espeak && node scripts/copy-generated.js';
-} else if (!fs.existsSync(path.join(dataDir, 'phontab')) && !fs.existsSync(path.join(dataDir, 'phontab.gz'))) {
-  skip = `espeak-ng-data missing in ${dataDir}: python -I tools/kitten-tts-2-tiny/espeak_data.py`;
-}
+const skip = !fs.existsSync(runtime)
+  ? 'espeak-ng runtime missing in lib/: npm run build:espeak, then npm run build:test'
+  : data.textDataSkip('espeak-ng-data/phontab', 'manifest.json');
 
 const espeak = skip ? null : require('../lib/tiny/frontend/espeak/EspeakG2P');
+const dataDir = skip ? null : path.join(data.textDir, 'espeak-ng-data');
 
 function readFiles(names) {
-  const files = {};
-  for (const name of names) {
-    // The hosted text data keeps some files gzipped ("<name>.gz").
-    const plain = path.join(dataDir, name);
-    files[name] = fs.existsSync(plain)
-      ? new Uint8Array(fs.readFileSync(plain))
-      : require('pako').inflate(new Uint8Array(fs.readFileSync(`${plain}.gz`)));
-  }
-  return files;
+  return Object.fromEntries(names.map(name => [name, data.readBytes(dataDir, name)]));
 }
 
 function filesFor(langs) {
@@ -119,8 +97,8 @@ test('espeak G2P output does not depend on the order of languages and texts', { 
 test('languages can be added one at a time with only their own files', { skip }, async () => {
   const base = espeak.espeakDataFilesFor('de');
   const g2p = await espeak.EspeakG2P.create(readFiles(base));
-  assert.equal(g2p.hasLanguage('de'), true);
-  assert.equal(g2p.hasLanguage('ru'), false);
+  assert.deepEqual(g2p.missingFiles('de'), []);
+  assert.ok(g2p.missingFiles('ru').length > 0);
   assert.throws(() => g2p.phonemizeLang('Привет', 'ru', 'v1'), /missing espeak-ng-data files/);
 
   const mismatches = [];
@@ -129,7 +107,7 @@ test('languages can be added one at a time with only their own files', { skip },
     const extra = espeak.espeakDataFilesFor(lang).filter((f) => !base.includes(f));
     assert.deepEqual(extra, [`lang/${{ ru: 'zle/ru', hi: 'inc/hi', ko: 'ko' }[lang]}`, `${lang}_dict`]);
     g2p.addFiles(readFiles(extra));
-    assert.equal(g2p.hasLanguage(lang), true);
+    assert.deepEqual(g2p.missingFiles(lang), []);
     // the other-script cases need hi_dict and ko_dict: only complete once ko is in
     compareAll(g2p, 'v2', lang, mismatches, lang !== 'ko');
   }
@@ -149,13 +127,9 @@ test('unsupported languages and versions are rejected', { skip }, async () => {
   await assert.rejects(espeak.EspeakG2P.create({}), /missing espeak-ng-data files/);
 });
 
-test('espeakDataFilesFor matches the data manifest', { skip }, () => {
-  const manifestPath = path.join(dataRoot, 'manifest.json');
-  if (!fs.existsSync(manifestPath)) return;
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  // espeak_data.py's manifest has "languages"; the text pack's (build_text_pack.py) "espeakLanguages".
-  manifest.languages = manifest.languages || manifest.espeakLanguages;
+test('espeakDataFilesFor matches the text data manifest', { skip }, () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(data.textDir, 'manifest.json'), 'utf8'));
   for (const lang of allLangs) {
-    assert.deepEqual(espeak.espeakDataFilesFor(lang), manifest.languages[lang], lang);
+    assert.deepEqual(espeak.espeakDataFilesFor(lang), manifest.espeakLanguages[lang], lang);
   }
 });

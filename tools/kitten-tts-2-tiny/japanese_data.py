@@ -20,12 +20,14 @@ The 158 MB of other UniDic features are dropped. Output:
     <out>/ja/cutlet.bin          misaki's ja_words.txt (cutlet's word list), and the Unicode tables of the
                                  Python that wrote it (NFKC, the regex \\d, str.isdigit), so the phone
                                  normalises text exactly as Python 3.12 does
-    <out>/ja/manifest.json       sizes and sha256 of the files, and the versions they came from
+    <out>/ja/manifest.json       the versions they came from, for build_text_pack.py (which removes it)
 
 Every file is one container (layout in src/tiny/frontend/japanese/container.ts): "KTJA", a version, flags, then
 named typed arrays, 8-byte aligned, little-endian.
 
-    ~/.cache/kt2tiny/venv/bin/python -I tools/kitten-tts-2-tiny/japanese_data.py [--out DIR]
+build_text_pack.py runs this; on its own:
+
+    python -I tools/kitten-tts-2-tiny/japanese_data.py --out DIR
 
 UniDic is BSD-3-Clause / LGPL-2.1 / GPL-2.0 (tri-licence); misaki's ja_words.txt is Apache-2.0.
 """
@@ -33,7 +35,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import struct
 import sys
@@ -43,12 +44,11 @@ from pathlib import Path
 
 import numpy as np
 
-DEFAULT_OUT = Path.home() / ".cache" / "kittentts-ja" / "data"
 FORMAT_VERSION = 1
 
 # dtype codes of the container (container.ts)
-U8, U16, I16, U32, I32 = 1, 2, 3, 4, 5
-NP = {U8: np.uint8, U16: np.uint16, I16: np.int16, U32: np.uint32, I32: np.int32}
+U8, U16, I16, U32 = 1, 2, 3, 4
+NP = {U8: np.uint8, U16: np.uint16, I16: np.int16, U32: np.uint32}
 
 TOKEN = np.dtype([("lc", "<u2"), ("rc", "<u2"), ("posid", "<u2"), ("wcost", "<i2"),
                   ("feature", "<u4"), ("compound", "<u4")])
@@ -58,7 +58,7 @@ NO_READING = 0xFFFFFFFF
 # ---------------------------------------------------------------------------------------------------------------
 # containers
 
-def write_container(path: Path, sections: list[tuple[str, int, np.ndarray]], flags: int = 0) -> None:
+def write_container(path: Path, sections: list[tuple[str, int, np.ndarray]]) -> None:
     head = 16 + 32 * len(sections)
     off = (head + 7) & ~7
     descs, blobs = [], []
@@ -70,7 +70,7 @@ def write_container(path: Path, sections: list[tuple[str, int, np.ndarray]], fla
         blobs.append((off, b))
         off = (off + len(b) + 7) & ~7
     out = bytearray(off)
-    out[0:16] = struct.pack("<4sIII", b"KTJA", FORMAT_VERSION, flags, len(sections))
+    out[0:16] = struct.pack("<4sIII", b"KTJA", FORMAT_VERSION, 0, len(sections))
     out[16:head] = b"".join(descs)
     for o, b in blobs:
         out[o:o + len(b)] = b
@@ -371,7 +371,7 @@ def build_cutlet():
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 
     import fugashi
@@ -393,33 +393,22 @@ def main() -> None:
     cut, cut_info = build_cutlet()
     write_container(out / "cutlet.bin", cut)
 
+    from importlib.metadata import version
+    sources = {
+        "unidic-lite": version("unidic-lite") + f" (UniDic {unidic_lite.VERSION})",
+        "fugashi": version("fugashi"),
+        "misaki": version("misaki"),
+        "jaconv": version("jaconv"),
+        "python-unicode": unicodedata.unidata_version,
+    }
+    (out / "manifest.json").write_text(json.dumps({"sources": sources}, indent=1) + "\n", encoding="utf-8")
+    print(json.dumps({"lexicon": lex_info, "matrix": mat_info, "cutlet": cut_info}, ensure_ascii=False))
+
     import gzip
-    files = {}
     for name in ["unidic-lex.bin", "unidic-matrix.bin", "cutlet.bin"]:
         b = (out / name).read_bytes()
-        files[f"ja/{name}"] = {"bytes": len(b), "gzip_bytes": len(gzip.compress(b, 9, mtime=0)),
-                               "sha256": hashlib.sha256(b).hexdigest()}
-    from importlib.metadata import version
-    manifest = {
-        "format": FORMAT_VERSION,
-        "sources": {
-            "unidic-lite": version("unidic-lite") + f" (UniDic {unidic_lite.VERSION})",
-            "fugashi": version("fugashi"),
-            "misaki": version("misaki"),
-            "jaconv": version("jaconv"),
-            "python-unicode": unicodedata.unidata_version,
-        },
-        "lexicon": lex_info,
-        "matrix": mat_info,
-        "cutlet": cut_info,
-        "files": files,
-    }
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    raw = sum(f["bytes"] for f in files.values()) / 1e6
-    gz = sum(f["gzip_bytes"] for f in files.values()) / 1e6
-    for k, f in files.items():
-        print(f"  {k}: {f['bytes'] / 1e6:.2f} MB, gzip {f['gzip_bytes'] / 1e6:.2f} MB")
-    print(f"wrote {len(files)} files to {out}: {raw:.1f} MB, gzip {gz:.1f} MB")
+        print(f"  ja/{name}: {len(b) / 1e6:.2f} MB, gzip {len(gzip.compress(b, 9, mtime=0)) / 1e6:.2f} MB")
+    print(f"wrote {out}")
 
 
 if __name__ == "__main__":

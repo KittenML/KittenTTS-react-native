@@ -2945,6 +2945,196 @@ false,
 ],
 "misaki": "ɪmˈOʤi  ænd sˈɪmbᵊlz lˈIk kˈɑpiɹˌIt tˌiˈɛm sˈɛkʃən əpˈɪɹ.",
 "phonemes": "ɪmˈOʤi  ænd sˈɪmbᵊlz lˈIk kˈɑpiɹˌIt tˌiˈɛm sˈɛkʃən əpˈɪɹ."
+},
+{
+"text": "Step ❶ is easy.",
+"normalized": "Step ❶ is easy.",
+"tokens": [
+[
+"Step",
+true,
+"NN"
+],
+[
+"❶",
+true,
+"CD"
+],
+[
+"is",
+true,
+"VBZ"
+],
+[
+"easy",
+false,
+"JJ"
+],
+[
+".",
+false,
+"."
+]
+],
+"misaki": "stˈɛp wˈʌn ɪz ˈizi.",
+"phonemes": "stˈɛp wˈʌn ɪz ˈizi."
+},
+{
+"text": "Press ① then ➀, or ⓵ and ⑴.",
+"normalized": "Press one then ➀, or ⓵ and (one).",
+"tokens": [
+[
+"Press",
+true,
+"VB"
+],
+[
+"one",
+true,
+"CD"
+],
+[
+"then",
+true,
+"RB"
+],
+[
+"➀",
+false,
+"CD"
+],
+[
+",",
+true,
+","
+],
+[
+"or",
+true,
+"CC"
+],
+[
+"⓵",
+true,
+"CD"
+],
+[
+"and",
+true,
+"CC"
+],
+[
+"(",
+false,
+"-LRB-"
+],
+[
+"one",
+false,
+"CD"
+],
+[
+")",
+false,
+"-RRB-"
+],
+[
+".",
+false,
+"."
+]
+],
+"misaki": "pɹˈɛs wˈʌn ðˈɛn wˈʌn, ɔɹ wˈʌn ænd (wˈʌn).",
+"phonemes": "pɹˈɛs wˈʌn ðˈɛn wˈʌn, ɔɹ wˈʌn ænd (wˈʌn)."
+},
+{
+"text": "Ethiopic ፩ and ᧚ and ⒈ count.",
+"normalized": "Ethiopic ፩ and ᧚ and one. count.",
+"tokens": [
+[
+"Ethiopic",
+true,
+"NN"
+],
+[
+"፩",
+true,
+"CD"
+],
+[
+"and",
+true,
+"CC"
+],
+[
+"᧚",
+true,
+"CD"
+],
+[
+"and",
+true,
+"CC"
+],
+[
+"one",
+false,
+"CD"
+],
+[
+".",
+true,
+"."
+],
+[
+"count",
+false,
+"NN"
+],
+[
+".",
+false,
+"."
+]
+],
+"misaki": "ˌiθiˈɑpɪk wˈʌn ænd wˈʌn ænd wˈʌn. kˈWnt.",
+"phonemes": "ˌiθiˈɑpɪk wˈʌn ænd wˈʌn ænd wˈʌn. kˈWnt."
+},
+{
+"text": "zork️blat",
+"normalized": "zork️blat",
+"tokens": [
+[
+"zork️blat",
+false,
+"NNP"
+]
+],
+"misaki": "zˈɔɹk blˈæt",
+"phonemes": "zˈɔɹk blˈæt"
+},
+{
+"text": "zorḱblat and qwix҉ip",
+"normalized": "zorḱblat and qwix҉ip",
+"tokens": [
+[
+"zorḱblat",
+true,
+"NNP"
+],
+[
+"and",
+true,
+"CC"
+],
+[
+"qwix҉ip",
+false,
+"NNS"
+]
+],
+"misaki": "zˈɔɹkblæt ænd kwˈɪks ˈIpˈi",
+"phonemes": "zˈɔɹkblæt ænd kwˈɪks ˈIpˈi"
 }
 ]
 }

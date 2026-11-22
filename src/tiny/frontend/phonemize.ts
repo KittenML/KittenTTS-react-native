@@ -2,9 +2,11 @@
 // and phonemize_v2.py). Order matters: replacements run in this order, as Python's dict
 // iteration does.
 
-import { pyStripSpace } from './english/pystr';
+import { pyStripSpace, replaceAll } from './pystr';
 
-export const FOLD_V1: Array<[string, string]> = [
+type Fold = ReadonlyArray<readonly [string, string]>;
+
+export const FOLD_V1: Fold = [
   ['\u032a', ''],
   ['\u0329', ''],
   ['\u030d', ''],
@@ -26,7 +28,7 @@ export const FOLD_V1: Array<[string, string]> = [
   ['\u202f', ' '],
 ];
 
-export const FOLD_EXTRA: Array<[string, string]> = [
+const FOLD_EXTRA: Fold = [
   ['\u2009', ' '],
   ['\t', ' '],
   ['«', ''],
@@ -40,8 +42,11 @@ export const FOLD_EXTRA: Array<[string, string]> = [
   ['g', 'ɡ'],
 ];
 
-function applyFold(ps: string, table: Array<[string, string]>): string {
-  for (const [src, dst] of table) if (ps.includes(src)) ps = ps.split(src).join(dst);
+/** phonemize_v2.FOLD = {**phonemize_v1.FOLD, **FOLD_EXTRA} (no key of FOLD_EXTRA is in v1's). */
+export const FOLD_V2: Fold = [...FOLD_V1, ...FOLD_EXTRA];
+
+export function applyFold(ps: string, table: Fold): string {
+  for (const [src, dst] of table) ps = replaceAll(ps, src, dst);
   return ps;
 }
 

@@ -2,15 +2,16 @@
 // the Python package uses for English words neither misaki nor CMUdict knows. One
 // encoder and one decoder layer, d_model 128, one head: small enough to run in plain
 // TypeScript. It mirrors transformers' BartForConditionalGeneration.generate() with
-// num_beams=1, do_sample=False and max_length=64 (greedy, forced EOS at the last step).
+// num_beams=1, do_sample=False and max_length=max_position_embeddings (greedy, forced
+// EOS at the last step).
 
 export interface BartConfig {
   grapheme_chars: string;
   phoneme_chars: string;
   max_position_embeddings: number;
   d_model: number;
-  encoder_ffn_dim: number;
-  decoder_ffn_dim: number;
+  encoder_layers: number;
+  decoder_layers: number;
   encoder_attention_heads: number;
   decoder_attention_heads: number;
   vocab_size: number;
@@ -26,23 +27,9 @@ type Tensors = Record<string, Float32Array>;
 
 const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
-/** n float16 values (little endian) from bytes[offset...], widened to float32. */
-function float16ToFloat32(bytes: Uint8Array, offset: number, n: number): Float32Array {
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const h = bytes[offset + 2 * i] | (bytes[offset + 2 * i + 1] << 8);
-    const sign = h & 0x8000 ? -1 : 1;
-    const exp = (h >> 10) & 0x1f;
-    const frac = h & 0x3ff;
-    if (exp === 0) out[i] = sign * frac * 2 ** -24;
-    else if (exp === 31) out[i] = frac ? NaN : sign * Infinity;
-    else out[i] = sign * (1 + frac / 1024) * 2 ** (exp - 15);
-  }
-  return out;
-}
-
-/** Parse a .safetensors file holding float32 or float16 tensors (float16 is widened). */
+/** Parse a .safetensors file of float32 tensors (what every model repository ships). */
 export function parseSafetensors(bytes: Uint8Array): Tensors {
+  if (!LITTLE_ENDIAN) throw new Error('parseSafetensors needs a little-endian platform');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const headerLen = Number(view.getBigUint64(0, true));
   let json = '';
@@ -52,21 +39,10 @@ export function parseSafetensors(bytes: Uint8Array): Tensors {
   const out: Tensors = {};
   for (const [name, info] of Object.entries(header)) {
     if (name === '__metadata__') continue;
+    if (info.dtype !== 'F32') throw new Error(`unsupported dtype ${info.dtype} for ${name} (only F32)`);
     const [a, b] = info.data_offsets;
-    if (info.dtype === 'F16') {
-      out[name] = float16ToFloat32(bytes, base + a, (b - a) / 2);
-      continue;
-    }
-    if (info.dtype !== 'F32') throw new Error(`unsupported dtype ${info.dtype} for ${name}`);
-    if (LITTLE_ENDIAN) {
-      // A copy starts at offset 0, so the view is aligned.
-      out[name] = new Float32Array(bytes.slice(base + a, base + b).buffer);
-      continue;
-    }
-    const n = (b - a) / 4;
-    const arr = new Float32Array(n);
-    for (let i = 0; i < n; i++) arr[i] = view.getFloat32(base + a + i * 4, true);
-    out[name] = arr;
+    // A copy starts at offset 0, so the view is aligned.
+    out[name] = new Float32Array(bytes.slice(base + a, base + b).buffer);
   }
   return out;
 }
@@ -137,27 +113,28 @@ function add(a: Float32Array, b: Float32Array): Float32Array {
   return y;
 }
 
-/** Single-head attention of q [nq, d] over k, v [nk, d]; causal masks keys after each query. */
-function attention(q: Float32Array, nq: number, k: Float32Array, v: Float32Array, nk: number, d: number,
-  causalOffset: number | null): Float32Array {
+/**
+ * Single-head attention of q [nq, d] over k, v [nk, d], with no mask: the encoder sees
+ * its whole input, and the decoder runs one step at a time over its cache.
+ */
+function attention(q: Float32Array, nq: number, k: Float32Array, v: Float32Array, nk: number, d: number): Float32Array {
   const out = new Float32Array(nq * d);
   const scale = 1 / Math.sqrt(d);
   const scores = new Float64Array(nk);
   for (let i = 0; i < nq; i++) {
-    const limit = causalOffset === null ? nk : Math.min(nk, causalOffset + i + 1);
     let max = -Infinity;
-    for (let j = 0; j < limit; j++) {
+    for (let j = 0; j < nk; j++) {
       let s = 0;
       for (let t = 0; t < d; t++) s += q[i * d + t] * k[j * d + t];
       scores[j] = s * scale;
       if (scores[j] > max) max = scores[j];
     }
     let sum = 0;
-    for (let j = 0; j < limit; j++) {
+    for (let j = 0; j < nk; j++) {
       scores[j] = Math.exp(scores[j] - max);
       sum += scores[j];
     }
-    for (let j = 0; j < limit; j++) {
+    for (let j = 0; j < nk; j++) {
       const p = scores[j] / sum;
       for (let t = 0; t < d; t++) out[i * d + t] += p * v[j * d + t];
     }
@@ -169,11 +146,16 @@ export class BartG2P {
   private readonly g2i = new Map<string, number>();
   private readonly i2p = new Map<number, string>();
   private readonly d: number;
-  private readonly maxLen: number;
+  /** max_position_embeddings: the longest token sequence, <s> and </s> included. */
+  readonly maxLen: number;
 
   constructor(private readonly config: BartConfig, private readonly w: Tensors) {
-    if (config.encoder_attention_heads !== 1 || config.decoder_attention_heads !== 1) {
-      throw new Error('BartG2P supports one attention head');
+    if (config.encoder_layers !== 1 || config.decoder_layers !== 1
+      || config.encoder_attention_heads !== 1 || config.decoder_attention_heads !== 1) {
+      throw new Error('BartG2P supports one layer with one attention head');
+    }
+    if ((config.activation_function ?? 'gelu') !== 'gelu' || config.scale_embedding) {
+      throw new Error('BartG2P supports gelu and unscaled embeddings only');
     }
     // Both strings open with four "_" placeholders for <pad> <s> </s> <unk>, so a
     // character's index is its token id.
@@ -233,7 +215,7 @@ export class BartG2P {
     const q = this.proj(x, n, `${L}.self_attn.q_proj`);
     const k = this.proj(x, n, `${L}.self_attn.k_proj`);
     const v = this.proj(x, n, `${L}.self_attn.v_proj`);
-    const a = this.proj(attention(q, n, k, v, n, this.d, null), n, `${L}.self_attn.out_proj`);
+    const a = this.proj(attention(q, n, k, v, n, this.d), n, `${L}.self_attn.out_proj`);
     x = this.ln(add(x, a), n, `${L}.self_attn_layer_norm`);
     x = this.ln(add(x, this.ffn(x, n, L)), n, `${L}.final_layer_norm`);
     const D = 'model.decoder.layers.0.encoder_attn';
@@ -257,10 +239,10 @@ export class BartG2P {
       const q = this.proj(x, 1, `${L}.self_attn.q_proj`);
       cacheK.push(...this.proj(x, 1, `${L}.self_attn.k_proj`));
       cacheV.push(...this.proj(x, 1, `${L}.self_attn.v_proj`));
-      const sa = attention(q, 1, Float32Array.from(cacheK), Float32Array.from(cacheV), tokens.length, d, null);
+      const sa = attention(q, 1, Float32Array.from(cacheK), Float32Array.from(cacheV), tokens.length, d);
       x = this.ln(add(x, this.proj(sa, 1, `${L}.self_attn.out_proj`)), 1, `${L}.self_attn_layer_norm`);
       const cq = this.proj(x, 1, `${L}.encoder_attn.q_proj`);
-      const ca = attention(cq, 1, memory.k, memory.v, nMem, d, null);
+      const ca = attention(cq, 1, memory.k, memory.v, nMem, d);
       x = this.ln(add(x, this.proj(ca, 1, `${L}.encoder_attn.out_proj`)), 1, `${L}.encoder_attn_layer_norm`);
       x = this.ln(add(x, this.ffn(x, 1, L)), 1, `${L}.final_layer_norm`);
       let next: number;

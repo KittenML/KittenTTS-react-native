@@ -183,7 +183,7 @@ function main() {
   const ortRoot = findOrtPackageRoot();
   if (!ortRoot) {
     console.warn(
-      '[@kittentts/react-native] Skipped ONNX Runtime iOS reload patch: onnxruntime-react-native not found.',
+      '[@kittentts/react-native] Skipped ONNX Runtime patches: onnxruntime-react-native not found.',
     );
     return;
   }
@@ -209,5 +209,4 @@ if (require.main === module) {
 module.exports = {
   patchOnnxruntimeBridgeRuntime,
   patchOnnxruntimeModule,
-  patchOnnxruntimeAndroidBuildGradle,
 };

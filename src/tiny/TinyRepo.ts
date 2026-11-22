@@ -20,18 +20,15 @@ export interface TinyVoice {
   [extra: string]: unknown;
 }
 
-export interface TinyLanguageEntry {
-  model: string;
+interface TinyLanguageEntry {
   model_file: string;
   model_files?: Partial<Record<KittenTinyWeights, string>>;
-  weights_file?: string;
   voices: string;
 }
 
 export interface TinyRepoConfig {
   name?: string;
   type: string;
-  family?: string;
   sample_rate?: number;
   phonemizer?: 'v1' | 'v2';
   vocab?: string;

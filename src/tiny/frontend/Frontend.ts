@@ -1,45 +1,35 @@
 // Text -> phoneme chunks for the Kitten TTS 2 nano / pico / mini models, exactly as in
 // their training (kittenml/kittentts2_tiny/frontend/__init__.py). English goes through
-// EnglishG2P (always filtered with the v1 symbol set, then folded for v2 models); every
-// other language through espeak-ng (EspeakG2P). Text longer than MAX_PHON phonemes is cut
-// at sentence ends, then at spaces.
+// EnglishG2P (always filtered with the v1 symbol set, then folded for v2 models), Japanese
+// (Mini) through misaki's cutlet G2P (JapaneseG2P), every other language through espeak-ng
+// (EspeakG2P). Text longer than MAX_PHON phonemes is cut at sentence ends, then at spaces.
 
 import type { EnglishG2P } from './english/EnglishG2P';
-import { pyLen, pyStripSpace } from './english/pystr';
+import { pyLen, pyStripSpace } from './pystr';
 import type { EspeakG2P, PhonemizerVersion } from './espeak/EspeakG2P';
 import type { JapaneseG2P } from './japanese/JapaneseG2P';
 import { foldExtra } from './phonemize';
+import { memo } from '../assets';
 
-export const MAX_PHON = 350;             // p90 phoneme length of the training lists
+const MAX_PHON = 350;                    // p90 phoneme length of the training lists
 const SENT_MULTI = /(?<=[.!?…।])\s+|(?<=[。！？])/u;
 
 interface G2PLike {
   phonemize(text: string, normalise?: boolean): Promise<{ text: string; phonemes: string }>;
+  dispose(): void;
 }
 
-/** One non-English language as in training. */
-class LangG2P implements G2PLike {
-  constructor(
-    private readonly espeak: EspeakG2P,
-    private readonly lang: string,
-    private readonly version: PhonemizerVersion,
-    private readonly vocab: ReadonlySet<string>,
-  ) {}
-
-  async phonemize(text: string): Promise<{ text: string; phonemes: string }> {
-    const ps = this.espeak.phonemizeLang(text, this.lang, this.version);
-    return { text, phonemes: Array.from(ps).filter(c => this.vocab.has(c)).join('') };
-  }
-}
-
-/** Japanese (Mini): misaki's cutlet G2P, then the vocab filter, as LangG2P does. */
-class JaG2P implements G2PLike {
-  constructor(private readonly ja: JapaneseG2P, private readonly vocab: ReadonlySet<string>) {}
-
-  async phonemize(text: string): Promise<{ text: string; phonemes: string }> {
-    const ps = this.ja.phonemize(text);
-    return { text, phonemes: Array.from(ps).filter(c => this.vocab.has(c)).join('') };
-  }
+/**
+ * A non-English language as in training (LangG2P in Python): the language's G2P, then only
+ * the characters in the model's vocab.
+ */
+function filtered(g2p: (text: string) => string, vocab: ReadonlySet<string>, dispose: () => void): G2PLike {
+  return {
+    async phonemize(text) {
+      return { text, phonemes: Array.from(g2p(text)).filter(c => vocab.has(c)).join('') };
+    },
+    dispose,
+  };
 }
 
 /** Cut one over-long phoneme string at spaces. */
@@ -55,7 +45,7 @@ function* wrap(ps: string): Generator<string> {
 }
 
 /** front_end: text -> phoneme chunks. Text of up to MAX_PHON phonemes is one G2P call. */
-export async function frontEnd(g2p: G2PLike, text: string): Promise<string[]> {
+async function frontEnd(g2p: G2PLike, text: string): Promise<string[]> {
   const whole = await g2p.phonemize(text);
   if (pyLen(whole.phonemes) <= MAX_PHON) return whole.phonemes ? [whole.phonemes] : [];
   const chunks: string[] = [];
@@ -76,7 +66,7 @@ export async function frontEnd(g2p: G2PLike, text: string): Promise<string[]> {
   return chunks;
 }
 
-export interface FrontendLoaders {
+interface FrontendLoaders {
   english(vocabV1: ReadonlySet<string>): Promise<EnglishG2P>;
   espeak(lang: string): Promise<EspeakG2P>;
   japanese(): Promise<JapaneseG2P>;
@@ -96,22 +86,19 @@ export class TinyFrontend {
   }
 
   private g2p(lang: string): Promise<G2PLike> {
-    let g = this.g2ps.get(lang);
-    if (!g) {
+    return memo(this.g2ps, lang, async () => {
       if (lang === 'en') {
         // English always filters with the v1 symbol set, as in training (v2 = v1 +
         // U+0289 on the unused id 29); the v2 models then fold with fold_extra.
-        const v1 = new Set(Array.from(this.vocab).filter(k => k !== 'ʉ'));
-        g = this.loaders.english(v1);
-      } else if (lang === 'ja') {
-        g = this.loaders.japanese().then(j => new JaG2P(j, this.vocab));
-      } else {
-        g = this.loaders.espeak(lang).then(e => new LangG2P(e, lang, this.phonemizer, this.vocab));
+        return this.loaders.english(new Set(Array.from(this.vocab).filter(k => k !== 'ʉ')));
       }
-      g.catch(() => this.g2ps.delete(lang));
-      this.g2ps.set(lang, g);
-    }
-    return g;
+      if (lang === 'ja') {
+        const ja = await this.loaders.japanese();
+        return filtered(text => ja.phonemize(text), this.vocab, () => ja.dispose());
+      }
+      const espeak = await this.loaders.espeak(lang);
+      return filtered(text => espeak.phonemizeLang(text, lang, this.phonemizer), this.vocab, () => espeak.dispose());
+    });
   }
 
   /** Load a language's text processing ahead of its first sentence. */
@@ -121,8 +108,15 @@ export class TinyFrontend {
 
   /** text -> the phoneme chunks the model speaks. */
   async phonemize(text: string, lang: string): Promise<string[]> {
-    let chunks = await frontEnd(await this.g2p(lang), text || '');
+    let chunks = await frontEnd(await this.g2p(lang), text);
     if (lang === 'en' && this.phonemizer === 'v2') chunks = chunks.map(foldExtra);
     return chunks;
+  }
+
+  /** Free every language's text processing (the English tagger's ONNX session among them). */
+  async dispose(): Promise<void> {
+    const all = Array.from(this.g2ps.values());
+    this.g2ps.clear();
+    for (const g of await Promise.all(all.map(p => p.catch(() => null)))) g?.dispose();
   }
 }

@@ -7,8 +7,7 @@ import type { OrtLike, OrtSessionLike } from '../../ort';
 import { createSession } from '../../ort';
 import { hashString, hashUint64 } from './hash';
 import type { SpacyToken } from './SpacyTokenizer';
-import { isSpace } from './SpacyTokenizer';
-import { pyIsAlpha, pyIsDigit, pyIsUpper, pyLower } from './pystr';
+import { own, pyIsAlpha, pyIsDigit, pyIsUpper, pyLower, pyStrIsSpace } from '../pystr';
 
 export interface SpacyTaggerMeta {
   /** One per feature column, in the network's order. */
@@ -22,7 +21,7 @@ export interface SpacyTaggerMeta {
 }
 
 /** spacy.lang.lex_attrs.word_shape */
-export function wordShape(text: string): string {
+function wordShape(text: string): string {
   const chars = Array.from(text);
   if (chars.length >= 100) return 'LONG';
   let shape = '';
@@ -58,7 +57,7 @@ export class SpacyTagger {
     meta: SpacyTaggerMeta,
     model: string | Uint8Array,
   ): Promise<SpacyTagger> {
-    return new SpacyTagger(ort, await createSession(ort, model, { intraOpNumThreads: 1 }), meta);
+    return new SpacyTagger(ort, await createSession(ort, model, 1), meta);
   }
 
   /** The Penn Treebank tag of each token (token.tag_). */
@@ -73,7 +72,7 @@ export class SpacyTagger {
   }
 
   /** The embedding rows HashEmbed picks for each token: [T, columns, 4], offset into one table. */
-  rows(tokens: readonly SpacyToken[]): BigInt64Array {
+  private rows(tokens: readonly SpacyToken[]): BigInt64Array {
     const cols = this.meta.embed;
     const rows = new BigInt64Array(tokens.length * cols.length * 4);
     tokens.forEach((tok, t) => {
@@ -105,7 +104,7 @@ export class SpacyTagger {
       case 'SPACY':
         return tok.spacy ? 1n : 0n;
       case 'IS_SPACE':
-        return text.length > 0 && Array.from(text).every(isSpace) ? 1n : 0n;
+        return pyStrIsSpace(text) ? 1n : 0n;
       default:
         throw new Error(`unknown spaCy feature ${attr}`);
     }
@@ -125,7 +124,7 @@ export class SpacyTagger {
     let h = this.hashes.get(text);
     if (h === undefined) {
       if (text === '') h = 0n;
-      else if (Object.prototype.hasOwnProperty.call(this.meta.symbols, text)) h = BigInt(this.meta.symbols[text]);
+      else if (own(this.meta.symbols, text)) h = BigInt(this.meta.symbols[text]);
       else h = hashString(text);
       if (this.hashes.size > 50_000) this.hashes.clear();
       this.hashes.set(text, h);

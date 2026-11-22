@@ -13,7 +13,7 @@ import { KittenTTSResult } from './KittenTTSResult';
 import { KittenTTS2Tiny } from './tiny/KittenTTS2Tiny';
 import type { KittenTTS2TinyOptions } from './tiny/KittenTTS2Tiny';
 import { isTinyModel } from './tiny/TinyRepo';
-import { KittenModel, speedPrior } from './KittenModel';
+import { speedPrior } from './KittenModel';
 import { KittenVoice } from './KittenVoice';
 import type { KittenWordTiming } from './KittenWordTiming';
 import { TTSEngine } from './engine/TTSEngine.web';

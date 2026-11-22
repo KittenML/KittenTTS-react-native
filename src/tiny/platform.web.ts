@@ -1,67 +1,43 @@
 // Web and Node: files fetched and kept in the browser's Cache Storage or, under Node,
 // in a folder (the SDK's AssetStorage), and onnxruntime-web.
 
-import { KittenTTSError, errorMessage } from '../KittenTTSError';
+import { KittenTTSError } from '../KittenTTSError';
 import type { ProgressHandler } from '../loader/ModelDownloader';
-import { defaultAssetStorage } from '../storage/AssetStorage';
+import { defaultAssetStorage, isNodeRuntime } from '../storage/AssetStorage';
 import type { AssetStorage } from '../storage/AssetStorage';
+import type { AssetRequest, TinyAssetStore, TinyFileSource, TinyPlatform, TinyPlatformOptions } from './assets';
+import { Downloader, readOnlyStore, unpack } from './assets';
 import type { OrtLike } from './ort';
-import type { AssetRequest, TinyAssetStore } from './assets';
-import { aggregateProgress, inBatches, readOnlyStore, unpack } from './assets';
-import { utf8Decode } from './frontend/english/hash';
-
-export interface TinyPlatformOptions {
-  storageDirectory?: string;
-  downloadRetries?: number;
-}
-
-export interface TinyPlatform {
-  ort: OrtLike;
-  store: TinyAssetStore;
-}
+import { utf8Decode } from './utf8';
 
 const ORT_WEB_VERSION = '1.26.0';
 let browserOrt: Promise<OrtLike> | undefined;
-
-function isNode(): boolean {
-  const scope = globalThis as { window?: unknown; process?: { versions?: { node?: string } } };
-  return typeof scope.window === 'undefined' && Boolean(scope.process?.versions?.node);
-}
 
 // Opaque to bundlers, as in TTSEngine.web.ts.
 const importModule = new Function('s', 'return import(s)') as (s: string) => Promise<any>;
 
 class FetchAssetStore implements TinyAssetStore {
+  /** Files the storage could not keep (a full or missing Cache Storage), for this session. */
   private readonly memory = new Map<string, Uint8Array>();
+  private readonly downloader: Downloader;
 
-  constructor(private readonly storage: AssetStorage, private readonly retries: number) {}
+  constructor(private readonly storage: AssetStorage, retries: number) {
+    this.downloader = new Downloader(retries, key => this.has(key), async (f, progress) => {
+      const res = await fetch(f.url, f.headers ? { headers: f.headers } : undefined);
+      if (!res.ok) throw new Error(`HTTP ${res.status} downloading ${f.url}`);
+      const data = unpack(f, new Uint8Array(await res.arrayBuffer()));
+      progress(data.length, data.length);
+      await this.storage.set(f.key, data).catch(() => this.memory.set(f.key, data));
+    });
+  }
 
-  async has(key: string): Promise<boolean> {
+  private async has(key: string): Promise<boolean> {
     if (this.memory.has(key)) return true;
     return this.storage.has ? this.storage.has(key) : (await this.storage.get(key)) !== null;
   }
 
-  async ensure(files: readonly AssetRequest[], onProgress?: ProgressHandler): Promise<void> {
-    const missing: AssetRequest[] = [];
-    for (const f of files) if (!(await this.has(f.key))) missing.push(f);
-    const progress = aggregateProgress(onProgress);
-    await inBatches(missing, 4, async f => {
-      let lastError: unknown;
-      for (let attempt = 1; attempt <= this.retries; attempt++) {
-        try {
-          const res = await fetch(f.url, f.headers ? { headers: f.headers } : undefined);
-          if (!res.ok) throw new Error(`HTTP ${res.status} downloading ${f.url}`);
-          const data = unpack(f, new Uint8Array(await res.arrayBuffer()));
-          progress(f.key, data.length, data.length);
-          await this.storage.set(f.key, data).catch(() => this.memory.set(f.key, data));
-          return;
-        } catch (error) {
-          lastError = error;
-          if (attempt < this.retries) await new Promise(r => setTimeout(r, 750 * attempt));
-        }
-      }
-      throw KittenTTSError.downloadFailed(`Failed after ${this.retries} attempts: ${errorMessage(lastError)}`, lastError);
-    });
+  ensure(files: readonly AssetRequest[], onProgress?: ProgressHandler): Promise<void> {
+    return this.downloader.ensure(files, onProgress);
   }
 
   async bytes(key: string): Promise<Uint8Array> {
@@ -74,23 +50,27 @@ class FetchAssetStore implements TinyAssetStore {
     return utf8Decode(await this.bytes(key));
   }
 
-  /** Removes one cached file (AssetStorage cannot list a folder). */
+  /** ONNX Runtime Web takes the model's bytes. */
+  async filePath(): Promise<undefined> {
+    return undefined;
+  }
+
   async clear(key: string): Promise<void> {
-    for (const k of Array.from(this.memory.keys())) if (k.startsWith(key)) this.memory.delete(k);
+    this.memory.delete(key);
     await this.storage.delete(key).catch(() => {});
   }
 
   /** Under Node a folder on disk; in a browser a URL prefix to fetch from. */
-  local(directory: string): TinyAssetStore {
+  local(directory: string): TinyFileSource {
     const dir = directory.replace(/\/+$/, '');
-    if (isNode()) {
+    if (isNodeRuntime()) {
       const fs = () => importModule('node:fs/promises');
       const readBytes = async (p: string) => new Uint8Array(await (await fs()).readFile(p));
       return readOnlyStore(
         key => `${dir.replace(/^file:\/\//, '')}/${key}`,
         async p => (await fs()).access(p).then(() => true, () => false),
         { text: async p => utf8Decode(await readBytes(p)), bytes: readBytes },
-        utf8Decode, this, false,
+        false,
       );
     }
     const get = async (p: string) => {
@@ -102,12 +82,12 @@ class FetchAssetStore implements TinyAssetStore {
       key => `${dir}/${key}`,
       async p => fetch(p, { method: 'HEAD' }).then(r => r.ok, () => false),
       { text: async p => utf8Decode(await get(p)), bytes: get },
-      utf8Decode, this, false,
+      false,
     );
   }
 
   async writeFile(path: string, data: Uint8Array): Promise<void> {
-    if (!isNode()) throw KittenTTSError.invalidArgument('generateToFile() needs a file system; use result.wavData() in a browser');
+    if (!isNodeRuntime()) throw KittenTTSError.invalidArgument('generateToFile() needs a file system; use result.wavData() in a browser');
     await (await importModule('node:fs/promises')).writeFile(path, data);
   }
 }
@@ -115,7 +95,7 @@ class FetchAssetStore implements TinyAssetStore {
 async function loadOrt(): Promise<OrtLike> {
   const scope = globalThis as { ort?: OrtLike; document?: any };
   if (scope.ort?.InferenceSession) return scope.ort;
-  if (isNode()) {
+  if (isNodeRuntime()) {
     const mod = await importModule('onnxruntime-web');
     return (mod.default ?? mod) as OrtLike;
   }

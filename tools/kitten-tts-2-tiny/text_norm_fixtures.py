@@ -3,23 +3,23 @@
 src/tiny/frontend/english/TtsNorm.ts (kittenml's tts_norm.normalize) and
 src/tiny/frontend/english/Num2Words.ts (the English num2words calls tts_norm and misaki make).
 
-Writes tests/fixtures/kitten-tts-2-tiny-norm.json with Python's outputs. Run it with the
-environment that has kittenml (KittenML/KittenTTS) + num2words installed, in isolated mode:
+Writes tests/fixtures/kitten-tts-2-tiny-norm.json (or --out FILE) with Python's outputs:
 
-    ~/.cache/kt2tiny/venv/bin/python -I tools/kitten-tts-2-tiny/text_norm_fixtures.py
+    python -I tools/kitten-tts-2-tiny/text_norm_fixtures.py [--out FILE]
 
 A case where Python raises is stored as {"error": "<ExceptionName>"}; the TS port must
 throw a PyError with that name.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import random
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
-import num2words as num2words_pkg
 from num2words import num2words
 from kittenml.kittentts2_tiny.frontend.tts_norm import normalize
 
@@ -320,6 +320,9 @@ def build_num2words(rng: random.Random) -> list[dict]:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", type=Path, default=OUT)
+    args = ap.parse_args()
     rng = random.Random(20261013)
     inputs = list(dict.fromkeys(CURATED + build_random(rng)))
     data = {
@@ -327,23 +330,15 @@ def main() -> None:
                   "(TtsNorm.ts, Num2Words.ts). Regenerate with "
                   "tools/kitten-tts-2-tiny/text_norm_fixtures.py.",
         "python": sys.version.split()[0],
-        "num2words": getattr(num2words_pkg, "__version__", None) or _dist_version("num2words"),
+        "num2words": version("num2words"),
         "normalize": [run_normalize(t) for t in inputs],
         "num2words_cases": build_num2words(rng),
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     errors = sum(1 for c in data["normalize"] if "error" in c)
-    print(f"wrote {OUT}: {len(data['normalize'])} normalize cases ({errors} raise), "
+    print(f"wrote {args.out}: {len(data['normalize'])} normalize cases ({errors} raise), "
           f"{len(data['num2words_cases'])} num2words cases")
-
-
-def _dist_version(name: str):
-    try:
-        from importlib.metadata import version
-        return version(name)
-    except Exception:  # noqa: BLE001
-        return None
 
 
 if __name__ == "__main__":

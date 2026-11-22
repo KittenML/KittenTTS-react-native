@@ -5,7 +5,8 @@ Source: the compiled espeak-ng 1.52.0 data of espeakng_loader 0.2.4, the package
 uses (so the bytes are exactly what the Python reference reads). Output:
 
     <out>/espeak-ng-data/<path>     the files, paths relative to espeak-ng-data/ as EspeakG2P expects them
-    <out>/manifest.json             sizes, sha256 and the file list of each language
+    <out>/manifest.json             the espeak-ng version and the file list of each language (build_text_pack.py
+                                    reads it and writes the text data's manifest over it)
 
 Each language needs the four base files espeak_Initialize reads (phontab, phonindex, phondata, intonations), its
 voice file under lang/ (the voice phonemizer's set_voice picks), its dictionary, en_dict (espeak reads words its
@@ -18,21 +19,22 @@ language is phonemized again by the Python reference with ONLY its files in the 
 tests/fixtures/kitten-tts-2-tiny-espeak.json. Keep LANG_FILES in step with VOICES in
 src/tiny/frontend/espeak/EspeakG2P.ts.
 
-    ~/.cache/kt2tiny/venv/bin/python -I tools/kitten-tts-2-tiny/espeak_data.py [--out DIR] [--verify]
+build_text_pack.py runs this; on its own:
+
+    python -I tools/kitten-tts-2-tiny/espeak_data.py --out DIR [--verify]
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import sys
 import tempfile
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "kitten-tts-2-tiny-espeak.json"
-DEFAULT_OUT = Path.home() / ".cache" / "kittentts-espeak-ng" / "data-1.52.0"
 
 BASE_FILES = ["phontab", "phonindex", "phondata", "intonations"]
 SHARED_DICTS = ["en_dict", "el_dict"]
@@ -119,7 +121,7 @@ def verify(src: Path, langs: list[str]) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--langs", default=",".join(LANG_FILES), help="comma-separated language codes")
     ap.add_argument("--data", type=Path, help="espeak-ng-data folder (default: espeakng_loader's)")
     ap.add_argument("--verify", action="store_true",
@@ -131,30 +133,26 @@ def main() -> None:
     if unknown:
         sys.exit(f"unknown languages: {unknown}")
     if args.data:
-        src = args.data
+        src, source = args.data, str(args.data)
     else:
         import espeakng_loader
         src = Path(espeakng_loader.get_data_path())
+        source = f"espeakng_loader {pkg_version('espeakng_loader')} espeak-ng-data"
     check_voice_choice()
 
     out_data = args.out / "espeak-ng-data"
     every = sorted({f for lang in langs for f in files_for(lang)})
     copy_files(src, out_data, every)
 
-    files = {}
-    for rel in every:
-        b = (out_data / rel).read_bytes()
-        files[rel] = {"bytes": len(b), "sha256": hashlib.sha256(b).hexdigest()}
     manifest = {
         "espeak_ng": "1.52.0",
-        "source": "espeakng_loader 0.2.4 espeak-ng-data",
-        "files": files,
+        "source": source,
         "languages": {lang: files_for(lang) for lang in langs},
     }
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
 
     def mb(paths):
-        return sum(files[p]["bytes"] for p in paths) / 1e6
+        return sum((out_data / p).stat().st_size for p in paths) / 1e6
 
     print(f"wrote {len(every)} files ({mb(every):.2f} MB) to {out_data}")
     print(f"  base {', '.join(BASE_FILES)}: {mb(BASE_FILES):.2f} MB; "

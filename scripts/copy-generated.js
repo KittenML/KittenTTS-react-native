@@ -1,37 +1,40 @@
 #!/usr/bin/env node
 
+// TypeScript does not copy plain .js files into lib/. The generated Emscripten
+// runtimes are required by their typed wrappers in lib/, so the build copies
+// them after tsc finishes.
+//
+//   node scripts/copy-generated.js                  every runtime must exist (npm run build)
+//   node scripts/copy-generated.js --allow-missing  copy the ones that exist (npm test; the
+//                                                   tests that need a missing one skip)
+
 const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
+const allowMissing = process.argv.includes('--allow-missing');
 
-// TypeScript does not copy plain .js assets into lib/. The generated
-// Emscripten runtimes are required by their typed wrappers in lib/, so
-// npm run build copies them after tsc finishes.
-const files = [
+const runtimes = [
   // Required by lib/phonemizer/generated/cephonemizer.js (npm run build:phonemizer).
-  { dir: path.join('phonemizer', 'generated'), file: 'cephonemizer-runtime.js', required: true },
+  path.join('phonemizer', 'generated', 'cephonemizer-runtime.js'),
   // Required by lib/tiny/frontend/espeak/generated/espeakng.js (npm run build:espeak).
-  // Optional here because npm run build does not build it yet.
-  { dir: path.join('tiny', 'frontend', 'espeak', 'generated'), file: 'espeakng-runtime.js', required: false },
+  path.join('tiny', 'frontend', 'espeak', 'generated', 'espeakng-runtime.js'),
 ];
 
-// Copy every runtime that exists before failing on a missing required one.
 const missing = [];
-for (const { dir, file, required } of files) {
-  const from = path.join(root, 'src', dir, file);
-  const to = path.join(root, 'lib', dir, file);
-
+for (const file of runtimes) {
+  const from = path.join(root, 'src', file);
   if (!fs.existsSync(from)) {
-    if (required) missing.push(path.relative(root, from));
-    else console.warn(`copy-generated: skipping missing ${path.relative(root, from)}`);
+    missing.push(path.relative(root, from));
     continue;
   }
-
+  const to = path.join(root, 'lib', file);
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to);
 }
 
 if (missing.length > 0) {
-  throw new Error(`Missing generated phonemizer runtime: ${missing.join(', ')}`);
+  const message = `Missing generated runtime: ${missing.join(', ')} (npm run build:phonemizer, npm run build:espeak)`;
+  if (!allowMissing) throw new Error(message);
+  console.warn(`copy-generated: ${message}`);
 }

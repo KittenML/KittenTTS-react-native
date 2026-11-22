@@ -20,7 +20,8 @@
 //
 // MeCab, like fugashi's C-string call, ends the input at the first NUL character.
 
-import { Container, unitsToString } from './container';
+import type { Container } from './container';
+import { unitsToString } from './unicode';
 
 export interface MecabNode {
   surface: string;
@@ -175,14 +176,15 @@ export class Mecab {
     this.keyBytes = lex.u8('keyBytes');
     this.tokStart = lex.u32('tokStart');
     this.readOff = lex.u32('readOff');
-    // The offset arrays are stored as differences: sum them up, in place in the caller's bytes
-    // (lex flag bit 0 records it). Sections that had to be copied are summed in the copy.
-    if (meta[6] === 1 && !(lex.isView('keyOff') && lex.flags & 1)) {
+    // The offset arrays are stored as differences: sum them up once, in place in the caller's
+    // bytes, and set flag bit 0 so the same bytes can be loaded again. Sections that had to be
+    // copied (unaligned bytes) are summed in the copy and leave the flag alone.
+    if (!(lex.flags & 1)) {
       for (const a of [this.keyOff, this.tokStart, this.readOff]) {
         const n = a.length;
         for (let i = 1; i < n; i++) a[i] += a[i - 1];
       }
-      if (lex.isView('keyOff')) lex.flags = lex.flags | 1;
+      if (lex.isView('keyOff')) lex.flags |= 1;
     }
     this.tokAttr = lex.u16('tokAttr');
     this.tokCost = lex.i16('tokCost');
@@ -216,14 +218,12 @@ export class Mecab {
     if (mm[2] !== meta[0] || mm[3] !== meta[1]) throw new Error(`${mat.name}: does not match ${lex.name}`);
     this.rowMap = mat.u16('rowMap');
     this.colMap = mat.u16('colMap');
-    const shared = mat.isView('cost');
     this.matrix = mat.i16('cost');
     if (this.matrix.length !== rows * this.cols) throw new Error(`${mat.name}: bad size`);
-    // Rows are stored as differences from the previous row: add them back up, in place in the
-    // caller's bytes (flag bit 0 records it, so the same bytes can be loaded again).
-    if (mm[4] === 1 && !(shared && mat.flags & 1)) {
+    // Rows are stored as differences from the previous row: add them back up, the same way.
+    if (!(mat.flags & 1)) {
       sumRows(this.matrix, this.cols);
-      if (shared) mat.flags = mat.flags | 1;
+      if (mat.isView('cost')) mat.flags |= 1;
     }
   }
 

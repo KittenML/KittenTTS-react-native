@@ -1,9 +1,9 @@
 // The TypeScript English front end against the Python package's output
 // (tests/fixtures/kitten-tts-2-tiny-english.json, from tools/kitten-tts-2-tiny/english_fixtures.py).
 //
-// Needs KITTEN_TTS_2_TINY_DATA (the text data folder) and the nano repository in the Hugging
-// Face cache (or KITTEN_TTS_2_TINY_MODELS); skips without them. KITTEN_TTS_2_TINY_ENGLISH_FIXTURE
-// points at another fixture file.
+// Needs KITTEN_TTS_2_TINY_DATA and the nano repository (tests/helpers/tiny-data.js); skips without
+// them. For a bigger run: KITTEN_TTS_2_TINY_ENGLISH_FIXTURE points at another fixture file, and
+// KITTEN_TTS_2_TINY_REPORT names a JSON file to write every mismatch to.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -14,13 +14,14 @@ const data = require('./helpers/tiny-data');
 const FIXTURE = process.env.KITTEN_TTS_2_TINY_ENGLISH_FIXTURE
   || path.join(__dirname, 'fixtures', 'kitten-tts-2-tiny-english.json');
 const nano = data.modelDir('kitten-tts-2-nano');
-const skip = !data.has(data.textDir, 'en/misaki-us-gold.json') ? 'set KITTEN_TTS_2_TINY_DATA'
-  : !nano ? 'no kitten-tts-2-nano in the Hugging Face cache' : false;
+const skip = data.textDataSkip('en/misaki-us-gold.json')
+  || (!nano ? 'no kitten-tts-2-nano (KITTEN_TTS_2_TINY_MODEL_DIR or the Hugging Face cache)' : false);
 
 async function loadFrontend() {
   const ort = require('onnxruntime-web');
   const { loadEnglishG2P } = require('../lib/tiny/frontend/english/load');
   const vocab = JSON.parse(fs.readFileSync(path.join(nano, 'vocab.json'), 'utf8'));
+  // English filters with the v1 symbol set: the rule is in src/tiny/frontend/Frontend.ts.
   const v1 = new Set(Object.keys(vocab).filter(k => k !== '\u0289'));
   return loadEnglishG2P(data.englishReader(), ort, v1);
 }
@@ -46,7 +47,7 @@ test('English front end matches the Python package', { skip }, async () => {
     const tags = await tagger.tag(doc);
     const wantTags = c.tokens.map(t => t[2]);
     if (JSON.stringify(tags) !== JSON.stringify(wantTags)) bad.tags.push({ text: c.normalized, want: wantTags, got: tags });
-    const raw = (await misaki.phonemize(c.normalized)).phonemes;
+    const raw = await misaki.phonemize(c.normalized);
     if (raw !== c.misaki) bad.misaki.push({ text: c.normalized, want: c.misaki, got: raw });
     const res = await g2p.phonemize(c.text);
     if (res.phonemes !== c.phonemes) bad.phonemes.push({ text: c.text, want: c.phonemes, got: res.phonemes });

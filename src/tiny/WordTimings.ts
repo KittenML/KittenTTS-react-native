@@ -1,57 +1,12 @@
-// Word timings for the Kitten TTS 2 nano / pico / mini models. The graph returns frames per
-// token, and every phoneme character is one token, so each space-separated phoneme word gets
-// an exact time range. Those are then shared out over the words of the input text: one each
-// where counts agree, more for words the text processing expands (numbers, dates,
-// abbreviations), estimated with the same English normaliser.
+// Word timings for the Kitten TTS 2 nano / pico / mini models. TinySynth gives each
+// space-separated phoneme word an exact time range from the graph's durations; here they are
+// shared out over the words of the input text: one each where counts agree, more for words
+// the text processing expands (numbers, dates, abbreviations), estimated with the same
+// English normaliser.
 
 import type { KittenWordTiming } from '../KittenWordTiming';
 import { normalize } from './frontend/english/TtsNorm';
-
-export interface PhonemeWordTime {
-  phonemes: string;
-  /** Seconds from the start of the chunk's (trimmed) audio. */
-  start: number;
-  end: number;
-}
-
-/**
- * Time ranges of the phoneme words of one chunk. `durations` are the graph's frames per
- * token for tokens [0] + phonemes + [10] + [0]; `lead` is the number of samples trimmed from
- * the start, `spf` samples per frame.
- */
-export function phonemeWordTimes(
-  phonemes: string,
-  vocab: Record<string, number>,
-  durations: readonly number[],
-  spf: number,
-  lead: number,
-  sampleRate: number,
-  length: number,
-): PhonemeWordTime[] {
-  const out: PhonemeWordTime[] = [];
-  const toSeconds = (frames: number) => Math.min(length, Math.max(0, frames * spf - lead)) / sampleRate;
-  let frame = durations[0] ?? 0;          // the start token
-  let token = 1;
-  let word = '';
-  let start = 0;
-  let end = 0;
-  for (const ch of phonemes) {
-    // KittenTTS2Tiny._tokens: characters outside the vocab make no token, except brackets.
-    const hasToken = Object.prototype.hasOwnProperty.call(vocab, ch) || ch === '(' || ch === ')';
-    const d = hasToken ? durations[token++] ?? 0 : 0;
-    if (ch === ' ') {
-      if (word) out.push({ phonemes: word, start: toSeconds(start), end: toSeconds(end) });
-      word = '';
-    } else {
-      if (!word) start = frame;
-      word += ch;
-      end = frame + d;
-    }
-    frame += d;
-  }
-  if (word) out.push({ phonemes: word, start: toSeconds(start), end: toSeconds(end) });
-  return out;
-}
+import type { PhonemeWordTime } from './TinySynth';
 
 /** How many phoneme words one input word is likely to become. */
 function estimate(word: string, language: string): number {
@@ -69,12 +24,11 @@ function estimate(word: string, language: string): number {
 export function wordTimings(text: string, language: string, groups: readonly PhonemeWordTime[]): KittenWordTiming[] {
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length === 0 || groups.length === 0) return [];
-  const want = words.map(w => estimate(w, language));
-  let counts = want.map(n => Math.max(n, 0));
+  let counts = words.map(w => estimate(w, language));
   const total = counts.reduce((a, b) => a + b, 0);
   if (total !== groups.length) {
     // Scale the estimates to the real number of groups, keeping every spoken word at least one.
-    const spoken = counts.filter(c => c > 0).length || words.length;
+    const spoken = counts.filter(c => c > 0).length;
     if (groups.length <= spoken) {
       counts = counts.map(c => (c > 0 ? 1 : 0));
     } else {

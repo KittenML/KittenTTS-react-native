@@ -5,6 +5,9 @@
 // land on either side in another ONNX Runtime build (5.50024 in Python's, just under 5.5
 // in onnxruntime-web), so one or two tokens may be one frame (600 samples) off.
 //
+// It reaches into private members (tts.config, tts.vocab, tts.pack, tts.synth) on purpose, to
+// compare each chunk's tokens and graph run with Python's.
+//
 // Needs local files, no network: KITTEN_TTS_2_TINY_DATA and the model repositories (see
 // tests/helpers/tiny-data.js). They are read through modelDirectory and textDataDirectory,
 // so this also covers loading from local folders and gzipped text data.
@@ -14,18 +17,33 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const data = require('./helpers/tiny-data');
+const { KittenTTS2Tiny } = require('../lib/tiny/KittenTTS2Tiny');
+const { modelFiles } = require('../lib/tiny/TinyRepo');
+const { tokenize } = require('../lib/tiny/TinySynth');
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'kitten-tts-2-tiny-synth.json');
 
 const { cases } = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 
+/** false when the case's files are here, else why it skips. */
+function skipReason(c, dir) {
+  const noText = data.textDataSkip('manifest.json');
+  if (noText) return noText;
+  if (!dir) return `no local ${c.model} (KITTEN_TTS_2_TINY_MODEL_DIR or the Hugging Face cache)`;
+  const configPath = path.join(dir, 'config.json');
+  if (!fs.existsSync(configPath)) return `config.json missing in ${dir}`;
+  const entry = JSON.parse(fs.readFileSync(configPath, 'utf8')).languages[c.resolved[0]];
+  if (!entry) return false; // the test fails with the SDK's error
+  const missing = ['vocab.json', modelFiles(entry)[c.weights], entry.voices]
+    .find(file => file && !fs.existsSync(path.join(dir, file)));
+  return missing ? `${missing} missing in ${dir}` : false;
+}
+
 for (const c of cases) {
   const name = `${c.model} ${c.weights} ${c.language}: ${c.text.slice(0, 40)}`;
   const dir = data.modelDir(c.model);
-  const skip = !data.has(data.textDir, 'manifest.json') ? 'set KITTEN_TTS_2_TINY_DATA'
-    : !dir ? `no local ${c.model}` : false;
+  const skip = skipReason(c, dir);
   test(name, { skip }, async () => {
-    const { KittenTTS2Tiny } = require('../lib/tiny/KittenTTS2Tiny');
     const tts = await KittenTTS2Tiny.create({
       model: c.model, weights: c.weights, languages: [c.language], platform: await data.nodePlatform(),
       modelDirectory: dir, textDataDirectory: data.textDir,
@@ -37,10 +55,10 @@ for (const c of cases) {
       const [lang, key] = c.resolved;
       const pack = (await tts.pack(lang))[key];
       const file = require('../lib/tiny/TinyRepo').modelFiles(tts.config.languages[lang])[c.weights];
+      const vocab = JSON.parse(fs.readFileSync(path.join(dir, 'vocab.json'), 'utf8'));
       let frameDrift = 0;
       for (let i = 0; i < chunks.length; i++) {
-        const { tokenize } = require('../lib/tiny/TinySynth');
-        assert.deepEqual(tokenize(chunks[i], tts.vocab), c.runs[i].tokens);
+        assert.deepEqual(tokenize(chunks[i], vocab), c.runs[i].tokens);
         const raw = await tts.synth.run(file, pack, chunks[i], 1.0);
         const want = c.runs[i].durations;
         assert.equal(raw.durations.length, want.length);

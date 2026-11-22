@@ -3,7 +3,7 @@
 //
 //   0   "KTJA"
 //   4   u32 format version (1)
-//   8   u32 flags (unidic-matrix.bin: bit 0 = its rows were already summed up in place)
+//   8   u32 flags (bit 0: the difference-coded sections were already summed up in place)
 //   12  u32 number of sections n
 //   16  n x { name: 20 bytes ASCII, NUL padded; u32 dtype; u32 byte offset; u32 element count }
 //       then the sections, each 8-byte aligned.
@@ -11,13 +11,13 @@
 // Sections are typed-array views on the bytes the caller hands in (no copy, unless the
 // bytes are not aligned for the element size).
 
-export const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 1;
 
-export type Section = Uint8Array | Uint16Array | Int16Array | Uint32Array | Int32Array;
+type Section = Uint8Array | Uint16Array | Int16Array | Uint32Array;
 
-type ArrayKind = 'u8' | 'u16' | 'i16' | 'u32' | 'i32';
-const KINDS: Record<number, ArrayKind> = { 1: 'u8', 2: 'u16', 3: 'i16', 4: 'u32', 5: 'i32' };
-const SIZE: Record<ArrayKind, number> = { u8: 1, u16: 2, i16: 2, u32: 4, i32: 4 };
+type ArrayKind = 'u8' | 'u16' | 'i16' | 'u32';
+const KINDS: Record<number, ArrayKind> = { 1: 'u8', 2: 'u16', 3: 'i16', 4: 'u32' };
+const SIZE: Record<ArrayKind, number> = { u8: 1, u16: 2, i16: 2, u32: 4 };
 
 function littleEndian(): boolean {
   return new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
@@ -29,12 +29,10 @@ function view(kind: ArrayKind, buffer: ArrayBufferLike, offset: number, count: n
     case 'u16': return new Uint16Array(buffer, offset, count);
     case 'i16': return new Int16Array(buffer, offset, count);
     case 'u32': return new Uint32Array(buffer, offset, count);
-    default: return new Int32Array(buffer, offset, count);
   }
 }
 
 export class Container {
-  readonly version: number;
   private readonly sections = new Map<string, { kind: ArrayKind; offset: number; count: number }>();
 
   constructor(readonly bytes: Uint8Array, readonly name: string) {
@@ -43,9 +41,9 @@ export class Container {
       throw new Error(`${name}: not a Japanese G2P data file`);
     }
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    this.version = dv.getUint32(4, true);
-    if (this.version !== FORMAT_VERSION) {
-      throw new Error(`${name}: data format ${this.version}, this SDK reads ${FORMAT_VERSION}`);
+    const version = dv.getUint32(4, true);
+    if (version !== FORMAT_VERSION) {
+      throw new Error(`${name}: data format ${version}, this SDK reads ${FORMAT_VERSION}`);
     }
     const n = dv.getUint32(12, true);
     for (let i = 0; i < n; i++) {
@@ -90,13 +88,4 @@ export class Container {
     const s = this.sections.get(key);
     return !!s && (this.bytes.byteOffset + s.offset) % SIZE[s.kind] === 0;
   }
-}
-
-/** A UTF-16 string from a slice of code units, without TextDecoder. */
-export function unitsToString(units: Uint16Array, start: number, end: number): string {
-  let s = '';
-  for (let i = start; i < end; i += 4096) {
-    s += String.fromCharCode.apply(null, Array.from(units.subarray(i, Math.min(end, i + 4096))));
-  }
-  return s;
 }

@@ -15,19 +15,20 @@ this writes the data they read, taken from the same package versions Python uses
                                 weights
     en/cmu_misaki_us.json       CMUdict in misaki's alphabet, from the model repositories'
                                 g2p/ folder (kept here so it can be downloaded gzipped)
+    en/manifest.json            the package versions, for build_text_pack.py (which removes it)
 
-Run with the venv that has kittenml, misaki and en_core_web_sm:
+build_text_pack.py runs this; on its own:
 
     python -I tools/kitten-tts-2-tiny/export_english.py OUT_DIR
 """
 from __future__ import annotations
 
-import hashlib
 import importlib.resources
 import json
 import re
 import shutil
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
@@ -68,7 +69,7 @@ def js_regex(pattern: str) -> dict:
                 i += 4
                 continue
             if n == "d":
-                out.append("\\p{Nd}" if in_class else "\\p{Nd}")
+                out.append("\\p{Nd}")
             elif n == "D":
                 out.append("\\P{Nd}")
             elif n == "w":
@@ -267,10 +268,6 @@ def export_tagger(nlp, out: Path) -> dict:
     }
 
 
-def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def main() -> None:
     out = Path(sys.argv[1]) / "en"
     out.mkdir(parents=True, exist_ok=True)
@@ -285,17 +282,14 @@ def main() -> None:
     from huggingface_hub import hf_hub_download
     shutil.copyfile(hf_hub_download("KittenML/kitten-tts-2-nano", "g2p/cmu_misaki_us.json"),
                     out / "cmu_misaki_us.json")
-    import misaki
     from misaki import data as misaki_data
     for name in ("us_gold.json", "us_silver.json"):
         with importlib.resources.as_file(importlib.resources.files(misaki_data) / name) as src:
             shutil.copyfile(src, out / f"misaki-{name.replace('_', '-')}")
-    files = sorted(p for p in out.iterdir() if p.is_file())
     manifest = {
-        "misaki": getattr(misaki, "__version__", None) or "0.9.4",
+        "misaki": version("misaki"),
         "spacy": spacy.__version__,
         "spacyModel": f"{SPACY_MODEL}-{nlp.meta['version']}",
-        "files": {f"en/{p.name}": {"size": p.stat().st_size, "sha256": sha256(p)} for p in files},
     }
     print(json.dumps(manifest, indent=1))
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")

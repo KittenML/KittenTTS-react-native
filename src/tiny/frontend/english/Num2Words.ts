@@ -1,4 +1,4 @@
-// Port of the English parts of the Python `num2words` package (num2words/base.py,
+// Port of the English parts of the Python `num2words` 0.5.14 package (num2words/base.py,
 // lang_EU.py, lang_EN.py) that Kitten TTS 2 Nano/Pico/Mini's text front end uses:
 // tts_norm calls num2words(int), to='ordinal' and to='year'; misaki's en.py also calls
 // num2words(float(word)). Output matches Python string for string, including its quirks:
@@ -12,15 +12,9 @@
 //     five"), as in Python.
 //   - Errors carry the Python exception name (OverflowError, TypeError, ValueError).
 
-export type Num2WordsTo = 'cardinal' | 'ordinal' | 'year';
+import { floatToInt, PyError } from '../pystr';
 
-/** An error standing in for a Python exception; `name` is the Python type name. */
-export class PyError extends Error {
-  constructor(pyType: string, message: string) {
-    super(message);
-    this.name = pyType;
-  }
-}
+export type Num2WordsTo = 'cardinal' | 'ordinal' | 'year';
 
 interface Pair {
   text: string;
@@ -128,13 +122,6 @@ function roundHalfEven(x: number): number {
   if (d > 0.5) return f + 1;
   if (d < 0.5) return f;
   return f % 2 === 0 ? f : f + 1;
-}
-
-/** int(x) for a float, as a Python int. */
-function floatToInt(x: number): bigint {
-  if (Number.isNaN(x)) throw new PyError('ValueError', 'cannot convert float NaN to integer');
-  if (!Number.isFinite(x)) throw new PyError('OverflowError', 'cannot convert float infinity to integer');
-  return BigInt(Math.trunc(x));
 }
 
 /** abs(Decimal(str(x)).as_tuple().exponent): the decimal places of repr(x). */

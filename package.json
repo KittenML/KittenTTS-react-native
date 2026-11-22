@@ -57,12 +57,13 @@
     "docs/",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "build": "npm run build:phonemizer && npm run build:espeak && npm run build:ts",
     "build:ts": "tsc -p tsconfig.json && node scripts/copy-generated.js",
-    "build:test": "tsc -p tsconfig.json",
+    "build:test": "tsc -p tsconfig.json && node scripts/copy-generated.js --allow-missing",
     "build:phonemizer": "node scripts/build-cephonemizer.js",
     "build:espeak": "node scripts/build-espeak-ng.js",
     "postinstall": "node scripts/patch-onnxruntime-react-native.js",
@@ -85,7 +86,7 @@
     "ml"
   ],
   "author": "KittenML",
-  "license": "Apache-2.0",
+  "license": "Apache-2.0 AND GPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/KittenML/kittentts-react-native"

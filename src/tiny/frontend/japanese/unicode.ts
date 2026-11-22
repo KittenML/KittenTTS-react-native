@@ -6,32 +6,7 @@
 //   str.isspace(), the regex \s        Python's whitespace set (fixed; every one is in the BMP)
 
 import type { Container } from './container';
-
-/** Python str.isspace() for one code point. */
-export function isPySpace(c: number): boolean {
-  return (
-    (c >= 0x09 && c <= 0x0d) ||
-    (c >= 0x1c && c <= 0x20) ||
-    c === 0x85 ||
-    c === 0xa0 ||
-    c === 0x1680 ||
-    (c >= 0x2000 && c <= 0x200a) ||
-    c === 0x2028 ||
-    c === 0x2029 ||
-    c === 0x202f ||
-    c === 0x205f ||
-    c === 0x3000
-  );
-}
-
-/** Python str.strip() with no argument. */
-export function pyStrip(s: string): string {
-  let a = 0;
-  let b = s.length;
-  while (a < b && isPySpace(s.charCodeAt(a))) a++;
-  while (b > a && isPySpace(s.charCodeAt(b - 1))) b--;
-  return a === 0 && b === s.length ? s : s.slice(a, b);
-}
+import { isPySpace } from '../pystr';
 
 /** re.sub(r'\s+', ' ', s) */
 export function collapseSpaces(s: string): string {
@@ -50,9 +25,13 @@ export function collapseSpaces(s: string): string {
   return out;
 }
 
-/** str.replace(a, b) for a non-empty a. */
-export function replaceAll(s: string, a: string, b: string): string {
-  return s.indexOf(a) < 0 ? s : s.split(a).join(b);
+/** A UTF-16 string from a slice of code units, without TextDecoder. */
+export function unitsToString(units: Uint16Array, start: number, end: number): string {
+  let s = '';
+  for (let i = start; i < end; i += 4096) {
+    s += String.fromCharCode.apply(null, Array.from(units.subarray(i, Math.min(end, i + 4096))));
+  }
+  return s;
 }
 
 /** The code points of a string (lone surrogates as themselves, as in Python). */
@@ -71,11 +50,6 @@ export function codePoints(s: string): number[] {
     out.push(c);
   }
   return out;
-}
-
-/** The characters (code points) of a string, as one-character strings. */
-export function chars(s: string): string[] {
-  return codePoints(s).map(c => String.fromCodePoint(c));
 }
 
 function inRanges(ranges: Uint32Array, cp: number): boolean {

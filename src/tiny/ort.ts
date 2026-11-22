@@ -2,15 +2,9 @@
 // onnxruntime-react-native and onnxruntime-web both fit it, so the same code runs on
 // device, on the web and in Node tests.
 
-export interface OrtTensorLike {
-  readonly data: unknown;
-  readonly dims: readonly number[];
-}
-
 export interface OrtSessionLike {
-  readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
-  run(feeds: Record<string, unknown>): Promise<Record<string, OrtTensorLike>>;
+  run(feeds: Record<string, unknown>): Promise<Record<string, { readonly data: unknown }>>;
   release?(): Promise<void>;
 }
 
@@ -21,17 +15,10 @@ export interface OrtLike {
   Tensor: new (type: any, data: any, dims: readonly number[]) => unknown;
 }
 
-export interface OrtSessionOptions {
-  intraOpNumThreads?: number;
-}
-
 /** A session from a file path (native) or the model's bytes. */
-export async function createSession(
-  ort: OrtLike,
-  model: string | Uint8Array,
-  options: OrtSessionOptions = {},
-): Promise<OrtSessionLike> {
-  const sessionOptions: Record<string, unknown> = { graphOptimizationLevel: 'all' };
-  if (options.intraOpNumThreads) sessionOptions.intraOpNumThreads = options.intraOpNumThreads;
-  return ort.InferenceSession.create(model, sessionOptions);
+export function createSession(ort: OrtLike, model: string | Uint8Array, threads?: number): Promise<OrtSessionLike> {
+  return ort.InferenceSession.create(model, {
+    graphOptimizationLevel: 'all',
+    ...(threads ? { intraOpNumThreads: threads } : {}),
+  });
 }

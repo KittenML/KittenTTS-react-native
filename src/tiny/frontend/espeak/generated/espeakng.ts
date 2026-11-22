@@ -8,15 +8,11 @@
  *
  * espeak-ng is GPL-3.0-or-later, and so is the generated runtime.
  */
-export interface EspeakNgFS {
+interface EspeakNgFS {
   /** Create a directory and its parents inside Emscripten MEMFS. */
   mkdirTree(path: string): void;
   /** Write a data file into Emscripten MEMFS. */
   writeFile(path: string, data: Uint8Array): void;
-  /** Remove a file from Emscripten MEMFS. */
-  unlink(path: string): void;
-  /** Look up a path; throws when it does not exist. */
-  stat(path: string): unknown;
 }
 
 export interface EspeakNgModule {

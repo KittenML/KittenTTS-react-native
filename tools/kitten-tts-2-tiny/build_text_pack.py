@@ -9,12 +9,13 @@ src/tiny/KittenTTS2Tiny.ts):
     ja/...               UniDic (unidic-lite 1.0.8) rebuilt for the TypeScript MeCab, and cutlet's
                          tables, for Mini's Japanese (japanese_data.py)
     manifest.json        every file with its size and sha256, and the versions it came from
+    README.md            the sources and licences, for the hosting repository
 
-Files that gzip to under 75% of their size are stored only as "<file>.gz"; the manifest
-says so (`gzip`), and the SDK downloads the .gz and unpacks it once on the device.
+Files over 32 kB that gzip to under 75% of their size are stored only as "<file>.gz"; the
+manifest says so (`gzip`), and the SDK downloads the .gz and unpacks it once on the device.
 
 The model repositories already hold everything else (graphs, voices, g2p/). Run with the
-Python env that has kittenml, misaki and en_core_web_sm:
+Python environment docs/development.md describes:
 
     python -I tools/kitten-tts-2-tiny/build_text_pack.py OUT_DIR
 """
@@ -63,9 +64,12 @@ def main() -> None:
                    stdout=subprocess.DEVNULL)
     subprocess.run([sys.executable, "-I", str(HERE / "japanese_data.py"), "--out", str(out)], check=True,
                    stdout=subprocess.DEVNULL)
+    # Each script leaves a manifest; keep their versions and language lists, not the files.
     en = json.loads((out / "en" / "manifest.json").read_text())
+    ja = json.loads((out / "ja" / "manifest.json").read_text())
     espeak = json.loads((out / "manifest.json").read_text())
     (out / "en" / "manifest.json").unlink()
+    (out / "ja" / "manifest.json").unlink()
     files = {}
     for p in sorted(out.rglob("*")):
         if not p.is_file() or p.name == "manifest.json" or p.suffix == ".gz":
@@ -83,12 +87,11 @@ def main() -> None:
         "name": "kitten-tts-2-text",
         "version": 2,
         "sources": {
-            "misaki": en.get("misaki"),
-            "spacy": en.get("spacy"),
-            "spacyModel": en.get("spacyModel"),
-            "espeak-ng": "1.52.0 (espeakng_loader 0.2.4 data)",
+            **en,
+            "espeak-ng": f"{espeak['espeak_ng']} ({espeak['source']})",
+            "japanese": ja["sources"],
         },
-        "espeakLanguages": espeak.get("languages"),
+        "espeakLanguages": espeak["languages"],
         "files": files,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")

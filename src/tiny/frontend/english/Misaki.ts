@@ -9,7 +9,6 @@ import type { SpacyTagger } from './SpacyTagger';
 import type { SpacyTokenizer } from './SpacyTokenizer';
 import {
   digitValue,
-  isLowerChar,
   own,
   pyCapitalize,
   pyIsAlpha,
@@ -24,7 +23,7 @@ import {
   pyStrIsAlpha,
   pyStrip,
   pyUpper,
-} from './pystr';
+} from '../pystr';
 
 type LexValue = string | Record<string, string | null>;
 export type Lexicon = Record<string, LexValue>;
@@ -49,7 +48,7 @@ interface TokenContext {
 }
 
 /** The fallback misaki calls for a word its lexicon can't say: phonemes or null. */
-export type Fallback = (token: MToken) => PS;
+type FallbackFn = (token: MToken) => PS;
 
 const DIPHTHONGS = new Set('AIOQWYʤʧ');
 const SUBTOKEN_JUNKS = new Set("',-._‘’/");
@@ -101,7 +100,7 @@ function isDigitStr(text: string): boolean {
   return /^[0-9]+$/.test(text);
 }
 
-export function stressWeight(ps: PS): number {
+function stressWeight(ps: PS): number {
   if (!ps) return 0;
   let n = 0;
   for (const c of ps) n += DIPHTHONGS.has(c) ? 2 : 1;
@@ -127,7 +126,7 @@ function restress(ps: string): string {
   return keyed.map(([, c]) => c).join('');
 }
 
-export function applyStress(ps: PS, stress: number | null): PS {
+function applyStress(ps: PS, stress: number | null): PS {
   if (stress === null || ps === null) return ps;
   if (stress < -1) return ps.split(PRIMARY_STRESS).join('').split(SECONDARY_STRESS).join('');
   if (stress === -1 || ((stress === 0 || stress === -0.5) && ps.includes(PRIMARY_STRESS))) {
@@ -213,7 +212,7 @@ class EnglishLexicon {
     if (word === 'a' || word === 'A') return tag === 'DT' ? 'ɐ' : 'ˈA';
     if (word === 'am' || word === 'Am' || word === 'AM') {
       if (tag.startsWith('NN')) return this.getNNP(word);
-      if (ctx.futureVowel === null || word !== 'am' || (stress !== null && stress !== 0 && stress > 0)) {
+      if (ctx.futureVowel === null || word !== 'am' || (stress !== null && stress > 0)) {
         return this.goldStr('am');
       }
       return 'ɐm';
@@ -244,7 +243,8 @@ class EnglishLexicon {
     return undefined;
   }
 
-  isKnown(word: string, tag: string | null): boolean {
+  // `_tag` is unused, as in misaki's is_known(word, tag)
+  isKnown(word: string, _tag: string | null): boolean {
     if (this.gold(word) !== undefined || own(SYMBOLS, word) || this.silver(word) !== undefined) return true;
     if (!pyStrIsAlpha(word) || !chars(word).every(c => LEXICON_ORDS.has(c.codePointAt(0) as number))) {
       return false;
@@ -370,7 +370,7 @@ class EnglishLexicon {
     return this.stemIng(word, tag, stress === null ? 0.5 : stress, ctx);
   }
 
-  static isCurrency(word: string): boolean {
+  private static isCurrency(word: string): boolean {
     if (!word.includes('.')) return true;
     if (word.split('.').length - 1 > 1) return false;
     return pyLen(word.split('.')[1]) < 3;
@@ -477,12 +477,12 @@ class EnglishLexicon {
     return word ? `${ps} ${word}` : ps;
   }
 
-  static numericIfNeeded(c: string): string {
-    if (!pyIsDigit(c)) return c;
-    return /^\p{Nd}$/u.test(c) ? String(digitValue(c)) : c;
+  /** str(int(unicodedata.numeric(c))) for every str.isdigit() character (all are 0-9). */
+  private static numericIfNeeded(c: string): string {
+    return pyIsDigit(c) ? String(digitValue(c)) : c;
   }
 
-  static isNumber(word: string, isHead: boolean): boolean {
+  private static isNumber(word: string, isHead: boolean): boolean {
     if (chars(word).every(c => !isDigitStr(c))) return false;
     for (const s of ['ing', "'d", 'ed', "'s", ...ORDINALS, 's']) {
       if (word.endsWith(s)) {
@@ -515,7 +515,7 @@ function newToken(text: string, tag: string, whitespace: string): MToken {
 }
 
 /** merge_tokens: several tokens as one, for lexicon lookups and the output. */
-export function mergeTokens(tokens: MToken[], unk: string | null = null): MToken {
+function mergeTokens(tokens: MToken[], unk: string | null = null): MToken {
   const stress = new Set(tokens.filter(t => t.stress !== null).map(t => t.stress as number));
   const currency = tokens.filter(t => t.currency !== null).map(t => t.currency as string);
   let phonemes: PS;
@@ -556,14 +556,14 @@ export class MisakiG2P {
     private readonly tagger: SpacyTagger,
     golds: Lexicon,
     silvers: Lexicon,
-    private readonly fallback: Fallback | null,
-    private readonly unk = '❓',
+    private readonly fallback: FallbackFn,
+    private readonly unk: string,
   ) {
     this.lexicon = new EnglishLexicon(golds, silvers);
   }
 
-  /** G2P.__call__ with preprocess=True: (phoneme string, tokens). */
-  async phonemize(text: string): Promise<{ phonemes: string; tokens: MToken[] }> {
+  /** G2P.__call__ with preprocess=True: the phoneme string. */
+  async phonemize(text: string): Promise<string> {
     const pre = MisakiG2P.preprocess(text);
     let tokens = await this.tokenize(pre.text, pre.tokens, pre.features);
     tokens = this.foldLeft(tokens);
@@ -573,7 +573,7 @@ export class MisakiG2P {
       const w = words[i];
       if (!Array.isArray(w)) {
         if (w.phonemes === null) w.phonemes = this.lexicon.call(w, ctx);
-        if (w.phonemes === null && this.fallback) w.phonemes = this.fallback(w);
+        if (w.phonemes === null) w.phonemes = this.fallback(w);
         ctx = MisakiG2P.tokenContext(ctx, w.phonemes, w);
         continue;
       }
@@ -598,7 +598,7 @@ export class MisakiG2P {
           if (t.phonemes === null) {
             if (chars(t.text).every(c => SUBTOKEN_JUNKS.has(c))) {
               t.phonemes = '';
-            } else if (this.fallback) {
+            } else {
               shouldFallback = true;
               break;
             }
@@ -608,7 +608,7 @@ export class MisakiG2P {
       }
       if (shouldFallback) {
         const tk = mergeTokens(w);
-        w[0].phonemes = this.fallback ? this.fallback(tk) : null;
+        w[0].phonemes = this.fallback(tk);
         for (let j = 1; j < w.length; j++) w[j].phonemes = '';
       } else {
         MisakiG2P.resolveTokens(w);
@@ -618,11 +618,10 @@ export class MisakiG2P {
     for (const tk of out) {
       if (tk.phonemes) tk.phonemes = tk.phonemes.split('ɾ').join('T').split('ʔ').join('t');
     }
-    const phonemes = out.map(tk => (tk.phonemes === null ? this.unk : tk.phonemes) + tk.whitespace).join('');
-    return { phonemes, tokens: out };
+    return out.map(tk => (tk.phonemes === null ? this.unk : tk.phonemes) + tk.whitespace).join('');
   }
 
-  static preprocess(text: string): {
+  private static preprocess(text: string): {
     text: string;
     tokens: string[];
     features: Map<number, number | string>;
@@ -632,7 +631,6 @@ export class MisakiG2P {
     const features = new Map<number, number | string>();
     let lastEnd = 0;
     text = pyLstripSpace(text);
-    LINK_REGEX.lastIndex = 0;
     for (const m of text.matchAll(LINK_REGEX)) {
       const start = m.index as number;
       result += text.slice(lastEnd, start);
@@ -669,6 +667,8 @@ export class MisakiG2P {
     const y2x = alignY2X(words, tokens.map(t => t.text));
     for (const [k, v] of features) {
       let i = 0;
+      // misaki en.py quirk, kept on purpose: j is a position in the flattened
+      // align.y2x.data, used as if it were a token index
       y2x.forEach((x, j) => {
         if (x !== k) return;
         const idx = i++;
@@ -694,13 +694,12 @@ export class MisakiG2P {
     return result;
   }
 
-  static retokenize(tokens: MToken[]): Word[] {
+  private static retokenize(tokens: MToken[]): Word[] {
     const words: Word[] = [];
     let currency: string | null = null;
     tokens.forEach((token, i) => {
       let tks: MToken[];
       if (token.alias === null && token.phonemes === null) {
-        SUBTOKEN_REGEX.lastIndex = 0;
         tks = Array.from(token.text.matchAll(SUBTOKEN_REGEX), m => ({
           ...newToken(m[0], token.tag, ''),
           numFlags: token.numFlags,
@@ -721,7 +720,7 @@ export class MisakiG2P {
         } else if (PUNCT_TAGS.has(tk.tag)
           && !chars(tk.text).every(c => {
             const o = pyLower(c).codePointAt(0) as number;
-            return pyLower(c).length > 0 && o >= 97 && o <= 122;
+            return o >= 97 && o <= 122;
           })) {
           tk.phonemes = own(PUNCT_TAG_PHONEMES, tk.tag)
             ? PUNCT_TAG_PHONEMES[tk.tag]
@@ -749,7 +748,7 @@ export class MisakiG2P {
     return words.map(w => (Array.isArray(w) && w.length === 1 ? w[0] : w));
   }
 
-  static tokenContext(ctx: TokenContext, ps: PS, token: MToken): TokenContext {
+  private static tokenContext(ctx: TokenContext, ps: PS, token: MToken): TokenContext {
     let vowel = ctx.futureVowel;
     if (ps) {
       for (const c of ps) {
@@ -764,7 +763,7 @@ export class MisakiG2P {
     return { futureVowel: vowel, futureTo };
   }
 
-  static resolveTokens(tokens: MToken[]): void {
+  private static resolveTokens(tokens: MToken[]): void {
     const text = tokens.slice(0, -1).map(t => t.text + t.whitespace).join('') + tokens[tokens.length - 1].text;
     const kinds = new Set<number>();
     for (const c of text) {
@@ -831,5 +830,3 @@ function alignY2X(x: string[], y: string[]): number[] {
   });
   return data;
 }
-
-export { isLowerChar };

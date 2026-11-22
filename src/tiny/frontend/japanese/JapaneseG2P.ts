@@ -14,8 +14,8 @@
  *
  * Plain TypeScript, no WebAssembly, TextDecoder, Node or React Native APIs: the caller hands
  * in the data files (tools/kitten-tts-2-tiny/japanese_data.py) as bytes. The byte arrays are
- * used in place (typed-array views, no copy), and unidic-matrix.bin is decoded in place the
- * first time (a flag in its header records that, so the same bytes can be loaded again).
+ * used in place (typed-array views, no copy), and the dictionary files are decoded in place the
+ * first time (a flag in each header records that, so the same bytes can be loaded again).
  * Hold on to them only through this object.
  *
  * UniDic (unidic-lite) is BSD-3-Clause / LGPL-2.1 / GPL-2.0; misaki, cutlet, jaconv and
@@ -24,22 +24,12 @@
 import { Container } from './container';
 import { Cutlet } from './cutlet';
 import { Mecab } from './mecab';
-import { PyUnicode, pyStrip, replaceAll } from './unicode';
+import { FOLD_V2, applyFold } from '../phonemize';
+import { pyStripSpace } from '../pystr';
+import { PyUnicode } from './unicode';
 
 /** The data files, as keys of the record create() takes (paths relative to the text data folder). */
 export const JAPANESE_DATA_FILES: string[] = ['ja/unidic-lex.bin', 'ja/unidic-matrix.bin', 'ja/cutlet.bin'];
-
-/** phonemize_v2.FOLD = {**phonemize_v1.FOLD, **FOLD_EXTRA}, in Python's dict order. */
-const FOLD_V2: ReadonlyArray<readonly [string, string]> = [
-  ['\u032a', ''], ['\u0329', ''], ['\u030d', ''], ['\u032f', ''],
-  ['ɭ', 'l'], ['ɫ', 'l'], ['ɵ', 'ø'], ['ε', 'ɛ'],
-  ['\u0005', ''], ['\u0006', ''], ['\u0007', ''], ['\u0008', ''],
-  ['{', ''], ['}', ''], ['[', ''], [']', ''],
-  ['¿', ''], ['¡', ''], ['\u202f', ' '],
-  ['\u2009', ' '], ['\t', ' '], ['«', ''], ['»', ''],
-  ['‘', ''], ['’', ''], ["'", ''], ['~', ''], ['·', ''], ['#', ''],
-  ['g', 'ɡ'],
-];
 
 /** phonemize_v1.ZH_STRIP (= phonemize_v2.CJK_STRIP) */
 function isCjkStrip(c: number): boolean {
@@ -71,15 +61,11 @@ export class JapaneseG2P {
   phonemize(text: string): string {
     if (!this.cutlet) throw new Error('JapaneseG2P: disposed');
     // phonemize(): out = g2p(text); ps = (out[0] or "").strip(); FOLD
-    let ps = pyStrip(this.cutlet.phonemize(text));
-    for (const [src, dst] of FOLD_V2) ps = replaceAll(ps, src, dst);
+    const ps = applyFold(pyStripSpace(this.cutlet.phonemize(text)), FOLD_V2);
     // phonemize_lang(): "".join(c for c in ps if c not in CJK_STRIP)
-    if (ps) {
-      let out = '';
-      for (let i = 0; i < ps.length; i++) if (!isCjkStrip(ps.charCodeAt(i))) out += ps[i];
-      ps = out;
-    }
-    return ps;
+    let out = '';
+    for (let i = 0; i < ps.length; i++) if (!isCjkStrip(ps.charCodeAt(i))) out += ps[i];
+    return out;
   }
 
   /** Drop the dictionary (the caller's byte arrays can then be freed). */

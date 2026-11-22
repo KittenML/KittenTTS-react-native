@@ -173,7 +173,6 @@ function main() {
     // As espeak-ng's own CMake build: signed overflow wraps like on the
     // native library the Python reference uses.
     '-fwrapv',
-    '-fno-exceptions',
     '-w',
     '-O3',
     // Plain JS (asm.js style), no WebAssembly: Hermes has none.

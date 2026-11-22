@@ -15,7 +15,8 @@
 import type { Container } from './container';
 import type { Mecab } from './mecab';
 import { convertNumber } from './num2kana';
-import { chars, codePoints, collapseSpaces, PyUnicode, pyStrip, replaceAll } from './unicode';
+import { pyStripSpace, replaceAll } from '../pystr';
+import { codePoints, collapseSpaces, PyUnicode } from './unicode';
 
 // cutlet.HEPBURN after all its updates (hiragana, ヷ-ヺ, digraphs, symbols).
 const HEPBURN_ENTRIES: Array<[string, string]> = [
@@ -76,30 +77,14 @@ const ODORI = new Set(Array.from('〃々ゝゞヽ'));
 const DAKUTEN_FROM = 'かきくけこさしすせそたちつてとはひふへほ';
 const DAKUTEN_TO = 'がぎぐげござじずぜぞだぢづでどばびぶべぼ';
 
-// mojimoji.zen_to_han(text, kana=False): one character at a time (measured on every code point).
-const ZEN_TO_HAN = new Map<number, string>([
-  [0x2018, '`'], [0x2019, "'"], [0x201d, '"'], [0x3000, ' '], [0xffe5, '¥'],
-]);
-for (let c = 0xff01; c <= 0xff5e; c++) {
-  if (c !== 0xff02 && c !== 0xff07 && c !== 0xff40) ZEN_TO_HAN.set(c, String.fromCharCode(c - 0xfee0));
-}
+// mojimoji.zen_to_han(text, kana=False) after NFKC: NFKC has already turned the full-width
+// ASCII forms, U+3000 and U+FFE5 into their plain forms, so only these three can still change.
+const ZEN_TO_HAN = new Map<number, string>([[0x2018, '`'], [0x2019, "'"], [0x201d, '"']]);
 
-// mojimoji.han_to_zen(text, digit=False, ascii=False): half-width katakana and its voiced
-// pairs. NFKC has already turned every half-width katakana into full width, so this never
-// changes anything here; it is kept so the step reads like the original.
-const HAN_TO_ZEN = new Map<number, string>();
-{
-  const zen = '。「」、・ヲァィゥェォャュョッーアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン゛゜';
-  for (let i = 0; i < zen.length; i++) HAN_TO_ZEN.set(0xff61 + i, zen[i]);
-}
-const HAN_VOICED: Record<string, string> = {};
-{
-  const voiced = 'ヴ...ガギグゲゴザジズゼゾダヂヅデド.....バビブベボ';
-  const halfs = 'ｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎ';
-  for (let i = 0; i < halfs.length; i++) if (voiced[i] !== '.') HAN_VOICED[halfs[i] + 'ﾞ'] = voiced[i];
-  const semi = 'パピプペポ';
-  for (let i = 0; i < 5; i++) HAN_VOICED['ﾊﾋﾌﾍﾎ'[i] + 'ﾟ'] = semi[i];
-}
+// MeCab character categories (unidic-lite char.def) that cutlet looks at.
+const SYMBOL = 3;
+const HIRAGANA = 6;
+const KATAKANA = 7;
 
 /** jaconv.kata2hira: ァ-ヶ and ヽヾ to hiragana; everything else unchanged. */
 export function kata2hira(s: string): string {
@@ -189,12 +174,12 @@ export class Cutlet {
     const words: Word[] = this.mecab.parse(text).map(w => ({
       surface: w.surface,
       hira: kata2hira(w.reading || w.surface),
-      charType: w.charType === 7 || !w.isUnk ? 6 : w.charType,
+      charType: w.charType === KATAKANA || !w.isUnk ? HIRAGANA : w.charType,
     }));
     const tokens = this.romajiTokens(words);
     let out = '';
     for (const t of tokens) out += t.surface + (t.space ? ' ' : '');
-    let ps = collapseSpaces(pyStrip(out));
+    let ps = collapseSpaces(pyStripSpace(out));
     ps = replaceAll(replaceAll(ps, '(', '«'), ')', '»');
     return dropSpacesAroundGlottalStop(ps);
   }
@@ -213,7 +198,8 @@ export class Cutlet {
     for (const [k, v] of KATAKANA_PHONETIC_EXTENSIONS) t = replaceAll(t, k, v);
     t = uni.nfkc(t);
     t = zenToHan(t);
-    t = hanToZen(t);
+    // mojimoji.han_to_zen (half-width katakana to full width) would follow; after NFKC it never
+    // changes anything.
     // ''.join([(' '+Convert(t)) if t.isdigit() else t for t in re.findall(r'\d+|\D+', text)])
     cps = codePoints(t);
     let out = '';
@@ -293,14 +279,14 @@ export class Cutlet {
     const surface = word.surface;
     if (this.uni.isDigit(surface)) throw new Error(`AssertionError: ${surface}`);
     if (pyIsAscii(surface)) return surface;
-    if (word.charType === 3) {
+    if (word.charType === SYMBOL) {
       let s = '';
-      for (const c of chars(surface)) s += HEPBURN.has(c) ? (HEPBURN.get(c) as string) : c;
+      for (const c of Array.from(surface)) s += HEPBURN.has(c) ? (HEPBURN.get(c) as string) : c;
       return s;
-    } else if (word.charType !== 6) {
+    } else if (word.charType !== HIRAGANA) {
       return '';
     }
-    const hira = chars(word.hira);
+    const hira = Array.from(word.hira);
     let out = '';
     for (let ki = 0; ki < hira.length; ki++) {
       const nk = ki < hira.length - 1 ? hira[ki + 1] : null;
@@ -362,25 +348,6 @@ function zenToHan(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const m = ZEN_TO_HAN.get(s.charCodeAt(i));
     out += m === undefined ? s[i] : m;
-  }
-  return out;
-}
-
-function hanToZen(s: string): string {
-  let out = '';
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0xff61 || c > 0xff9f) {
-      out += s[i];
-      continue;
-    }
-    const pair = s.slice(i, i + 2);
-    if (Object.prototype.hasOwnProperty.call(HAN_VOICED, pair)) {
-      out += HAN_VOICED[pair];
-      i++;
-    } else {
-      out += HAN_TO_ZEN.get(c) ?? s[i];
-    }
   }
   return out;
 }

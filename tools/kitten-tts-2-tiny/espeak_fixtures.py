@@ -8,10 +8,10 @@ kittenml's own code, exactly what LangG2P does before its vocab filtering:
 
 tests/kitten-tts-2-tiny-espeak.test.js checks that src/tiny/frontend/espeak/EspeakG2P.ts gives the same strings.
 
-Run with the reference venv (kittenml from KittenML/KittenTTS main, misaki 0.9.4, phonemizer 3.6.0,
+Run with the reference environment (kittenml from KittenML/KittenTTS main, misaki 0.9.4, phonemizer 3.6.0,
 espeakng_loader 0.2.4 = espeak-ng 1.52.0):
 
-    ~/.cache/kt2tiny/venv/bin/python -I tools/kitten-tts-2-tiny/espeak_fixtures.py
+    python -I tools/kitten-tts-2-tiny/espeak_fixtures.py [--out FILE] [--check-state]
 
 --check-state also phonemizes the texts in reverse order, and every 7th text in a fresh espeak instance, and
 reports any text whose phonemes depend on what was phonemized before it (espeak keeps some state between calls).
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -653,9 +652,7 @@ def main() -> None:
     args = ap.parse_args()
 
     from kittenml.kittentts2_tiny.frontend import espeak, phonemize_v1, phonemize_v2
-    import espeakng_loader
-    import misaki
-    import phonemizer
+    from phonemizer.backend import EspeakBackend
 
     mods = {"v1": phonemize_v1, "v2": phonemize_v2}
     langs = {"v1": V1_LANGS, "v2": V2_LANGS}
@@ -694,11 +691,10 @@ def main() -> None:
                  "languages; written by tools/kitten-tts-2-tiny/espeak_fixtures.py",
         "reference": {
             "kittenml": pkg_version("kittenml"),
-            "misaki": misaki.__version__ if hasattr(misaki, "__version__") else pkg_version("misaki"),
-            "phonemizer": phonemizer.__version__ if hasattr(phonemizer, "__version__") else pkg_version("phonemizer"),
+            "misaki": pkg_version("misaki"),
+            "phonemizer": pkg_version("phonemizer"),
             "espeakng_loader": pkg_version("espeakng_loader"),
-            "espeak_ng": phonemizer.backend.EspeakBackend.version() and ".".join(
-                str(v) for v in phonemizer.backend.EspeakBackend.version()),
+            "espeak_ng": ".".join(str(v) for v in EspeakBackend.version()),
         },
         "versions": langs,
         "cases": cases,
@@ -707,8 +703,8 @@ def main() -> None:
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
         f.write("\n")
-    n = sum(len(langs[v]) and sum(len(cases[l]) for l in langs[v]) for v in langs)
-    print(f"wrote {args.out} ({n} cases)")
+    n = sum(len(cases[lang]) for version in langs for lang in langs[version])
+    print(f"wrote {args.out} ({n} checks)")
 
 
 if __name__ == "__main__":

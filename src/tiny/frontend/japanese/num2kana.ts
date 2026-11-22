@@ -4,7 +4,7 @@
 // Strings are handled as arrays of code points, like Python's len() and slicing.
 
 const HIRAGANA: Record<string, string> = {
-  '.': 'てん', '0': 'ゼロ', '1': 'いち', '2': 'に', '3': 'さん', '4': 'よん', '5': 'ご', '6': 'ろく', '7': 'なな',
+  '0': 'ゼロ', '1': 'いち', '2': 'に', '3': 'さん', '4': 'よん', '5': 'ご', '6': 'ろく', '7': 'なな',
   '8': 'はち', '9': 'きゅう', '10': 'じゅう', '100': 'ひゃく', '1000': 'せん', '10000': 'まん', '100000000': 'おく',
   '300': 'さんびゃく', '600': 'ろっぴゃく', '800': 'はっぴゃく', '3000': 'さんぜん', '8000': 'はっせん', '01000': 'いっせん',
 };
@@ -108,12 +108,11 @@ function doConvert(n: Num): string {
 
 /**
  * num2kana.Convert(digits, 'hiragana') for a run of characters str.isdigit() accepts (cutlet
- * never passes a "." here, so the decimal branch is left out).
+ * never passes a "." here, so the decimal branch is not ported).
  */
 export function convertNumber(digits: string): string {
   let n: Num = Array.from(digits.split(',').join(''));
   if (n.length > 9) return 'Number length too long, choose less than 10 digits';
   while (n[0] === '0' && n.length > 1) n = n.slice(1);
-  if (n.indexOf('.') >= 0) throw new Error('num2kana: decimals are not ported');
   return doConvert(n).split(' ').join('');
 }

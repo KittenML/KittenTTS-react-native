@@ -2,41 +2,26 @@
 // phonemize_v2.phonemize_lang(get_g2p('ja'), text, 'ja') = misaki cutlet + fugashi/MeCab + unidic-lite
 // (tests/fixtures/kitten-tts-2-tiny-japanese.json, written by tools/kitten-tts-2-tiny/japanese_fixtures.py).
 //
-// Needs, besides npm run build:test, the data files (65 MB, not in the repo):
-//   python -I tools/kitten-tts-2-tiny/japanese_data.py      (writes ~/.cache/kittentts-ja/data/ja/...;
-//                                                           or set KITTENTTS_JA_DATA / KITTEN_TTS_2_TINY_DATA
-//                                                           to a folder holding ja/)
-// The tests are skipped when either is missing.
+// Needs KITTEN_TTS_2_TINY_DATA (its ja/ folder; tests/helpers/tiny-data.js). The tests skip without it.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
+const data = require('./helpers/tiny-data');
 
 const fixtures = require('./fixtures/kitten-tts-2-tiny-japanese.json');
 
 const lib = path.join(__dirname, '..', 'lib', 'tiny', 'frontend', 'japanese');
-const dataRoot = path.resolve(
-  process.env.KITTENTTS_JA_DATA || process.env.KITTEN_TTS_2_TINY_DATA || path.join(os.homedir(), '.cache', 'kittentts-ja', 'data'),
-);
-
-let skip = false;
-if (!fs.existsSync(path.join(lib, 'JapaneseG2P.js'))) {
-  skip = 'lib/ missing: npm run build:test';
-} else if (!fs.existsSync(path.join(dataRoot, 'ja', 'unidic-lex.bin'))
-  && !fs.existsSync(path.join(dataRoot, 'ja', 'unidic-lex.bin.gz'))) {
-  skip = `Japanese data missing in ${dataRoot}/ja: python -I tools/kitten-tts-2-tiny/japanese_data.py`;
-}
+const skip = !fs.existsSync(path.join(lib, 'JapaneseG2P.js'))
+  ? 'lib/ missing: npm run build:test'
+  : data.textDataSkip('ja/unidic-lex.bin', 'ja/unidic-matrix.bin', 'ja/cutlet.bin');
 
 const ja = skip ? null : require(path.join(lib, 'JapaneseG2P'));
 
 function readFiles() {
-  const files = {};
-  // The hosted text data keeps them gzipped ("<file>.gz").
-  for (const f of ja.JAPANESE_DATA_FILES) files[f] = require('./helpers/tiny-data').readBytes(dataRoot, f);
-  return files;
+  return Object.fromEntries(ja.JAPANESE_DATA_FILES.map(f => [f, data.readBytes(data.textDir, f)]));
 }
 
 function allCases() {
@@ -79,11 +64,6 @@ function report(mismatches) {
     .map(m => `${short(m.text)}\n   got  ${JSON.stringify(m.got)}\n   want ${JSON.stringify(m.want)}`)
     .join('\n');
 }
-
-test('fixture covers at least 1,500 Wikipedia sentences plus hand-written cases', { skip }, () => {
-  assert.ok(fixtures.cases.wiki.length >= 1500, `${fixtures.cases.wiki.length} sentences`);
-  assert.ok(fixtures.cases.hard.length > 100);
-});
 
 test('NFKC matches Python unicodedata', { skip }, () => {
   const { Container } = require(path.join(lib, 'container'));

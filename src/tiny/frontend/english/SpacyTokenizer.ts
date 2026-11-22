@@ -3,6 +3,8 @@
 // from en_core_web_sm through tools/kitten-tts-2-tiny/export_english.py. The cache is
 // left out: it only replays earlier results.
 
+import { pyIsSpaceChar } from '../pystr';
+
 export interface JsRegex {
   source: string;
   flags: string;
@@ -28,13 +30,6 @@ export interface SpacyToken {
   norm?: string;
 }
 
-// Python's str.isspace(): bidi classes WS, B and S, and category Zs.
-const SPACE = /^[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/u;
-
-export function isSpace(ch: string): boolean {
-  return SPACE.test(ch);
-}
-
 export class SpacyTokenizer {
   private readonly prefix: RegExp;
   private readonly suffix: RegExp;
@@ -48,7 +43,7 @@ export class SpacyTokenizer {
   constructor(data: SpacyTokenizerData) {
     this.prefix = new RegExp(data.prefix.source, data.prefix.flags);
     this.suffix = new RegExp(data.suffix.source, data.suffix.flags);
-    this.infix = new RegExp(data.infix.source, data.infix.flags.replace('g', '') + 'g');
+    this.infix = new RegExp(data.infix.source, data.infix.flags + 'g');
     // re.match: anchored at the start, which the sticky flag gives.
     this.url = data.url ? new RegExp(data.url.source, data.url.flags + 'y') : null;
     this.tokenMatch = data.tokenMatch
@@ -68,9 +63,9 @@ export class SpacyTokenizer {
     if (!text) return doc;
     let start = 0;
     let i = 0;
-    let inWs = isSpace(String.fromCodePoint(text.codePointAt(0) as number));
+    let inWs = pyIsSpaceChar(String.fromCodePoint(text.codePointAt(0) as number));
     for (const ch of text) {
-      if (isSpace(ch) !== inWs) {
+      if (pyIsSpaceChar(ch) !== inWs) {
         if (start < i) this.span(doc, text.slice(start, i), withSpecials);
         if (ch === ' ') {
           doc[doc.length - 1].spacy = true;
@@ -84,6 +79,7 @@ export class SpacyTokenizer {
     }
     if (start < i) {
       this.span(doc, text.slice(start), withSpecials);
+      // as in spaCy; always false, since a final " " leaves inWs set
       doc[doc.length - 1].spacy = text[text.length - 1] === ' ' && !inWs;
     }
     return doc;
@@ -185,7 +181,6 @@ export class SpacyTokenizer {
       } else if (this.matches(this.tokenMatch, text) || this.matches(this.url, text)) {
         doc.push({ text, spacy: false });
       } else {
-        this.infix.lastIndex = 0;
         const found = Array.from(text.matchAll(this.infix));
         if (found.length === 0) {
           doc.push({ text, spacy: false });
