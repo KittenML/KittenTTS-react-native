@@ -71,8 +71,10 @@ The scripts in `tools/kitten-tts-2-tiny/` run with a Python environment that has
 - `english_fixtures.py`, `espeak_fixtures.py`, `text_norm_fixtures.py`,
   `synth_fixtures.py`: regenerate the test fixtures from the Python package.
 
-Run the data-dependent tests with the text data folder (plus `vocab-nano.json`
-and the nano repository's `g2p/` for the English test):
+Upload the folder `build_text_pack.py` writes to the text data repository
+(`hf upload dewan-sl/kitten-tts-2-text OUT . --repo-type model`). Run the
+data-dependent tests with that folder; model files come from the Hugging Face
+cache (download the three repositories once, e.g. with the Python package):
 
 ```bash
 KITTEN_TTS_2_TINY_DATA=/path/to/data npm test

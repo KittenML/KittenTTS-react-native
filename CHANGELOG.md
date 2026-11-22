@@ -3,12 +3,17 @@
 ## Unreleased
 
 - Added Kitten TTS 2 Nano, Pico and Mini (`KittenTTS.create({ model:
-  'kitten-tts-2-nano' })`): int8 or int4 ONNX graphs, 8 languages (Mini 15),
+  'kitten-tts-2-nano' })`): int8 or int4 ONNX graphs, 8 languages (Mini 16),
   per-language voices, and the Python package's text processing ported to
   TypeScript (misaki + spaCy tagger for English, espeak-ng 1.52.0 compiled to
-  JavaScript for the rest, GPL-3.0). Phonemes match the Python package's.
+  JavaScript for most other languages, GPL-3.0; cutlet + MeCab with UniDic for
+  Japanese). Phonemes match the Python package's. The text data downloads from
+  `textDataURL` (default huggingface.co/dewan-sl/kitten-tts-2-text); local
+  folders (`modelDirectory`, `textDataDirectory`), `hfToken`,
+  `generateToFile()` and `onnxWeights` mirror the Python package. They need
+  React Native 0.75+ (Hermes with Unicode regular expressions and BigInt).
 - `KittenTTSResult` takes the voice type as a parameter; `KittenTTSErrorCode`
-  has `INVALID_ARGUMENT`.
+  has `INVALID_ARGUMENT` and `UNSUPPORTED_RUNTIME`.
 - `npm run build:phonemizer` links with `em++` (current Emscripten no longer
   links C++ through `emcc`), and `npm run build` also builds espeak-ng.
 

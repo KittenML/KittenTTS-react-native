@@ -7,7 +7,7 @@
 // JS the Python `re` meaning of:
 //   \w \b   Unicode word characters (letters, numbers, "_"), not ASCII
 //   \d      Unicode decimal digits (Nd), and int() reads any of them
-//   \s      Python's whitespace set (has \x1c-\x1f and \x85, lacks ﻿)
+//   \s      Python's whitespace set (has \x1c-\x1f and \x85, lacks \ufeff)
 //   re.I    ASCII letters only, plus the extra letters Python folds onto them:
 //           i ~ ı İ, s ~ ſ, k ~ K (JS's `i` flag differs, so it is not used)
 // Python exceptions that can escape normalize() (int() of a 4301+ digit number,
@@ -23,7 +23,7 @@ const r = String.raw;
 /** Python 3 str-pattern \w: str.isalnum() or "_" = Unicode categories L* and N*. */
 const W = r`\p{L}\p{N}_`;
 /** Python str.isspace() / re \s. */
-const S = r`\t\n\v\f\r\x1c-\x20\x85\xa0  -     　`;
+const S = r`\t\n\v\f\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000`;
 /** First code point of every run of ten Nd digits (Python 3.12, Unicode 15.0). */
 const ND_ZEROS = [
   0x30, 0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6,
@@ -524,7 +524,7 @@ const RE_DEGREES = pyRe(r`([-−]?[\d.]+)\s?°\s?([CF])\b`);
 function units(s: string): string {
   s = sub(RE_UNIT, s, (m) => {
     const n = m.g(1) as string;
-    // str.lower(): "mİ" (matched by re.I) lowers to "mi̇", which is no key -> KeyError
+    // str.lower(): "mİ" (matched by re.I) lowers to "mi\u0307", which is no key -> KeyError
     const unit = (m.g(2) as string).toLowerCase();
     const val = decimal(n);
     if (!has(UNITS, unit)) throw new PyError('KeyError', `'${unit}'`);

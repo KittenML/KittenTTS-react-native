@@ -105,11 +105,19 @@ Python package writes (`tools/kitten-tts-2-tiny/*_fixtures.py`):
   lengths, Unicode `\d`/`\w`, `str.lower()` without the final-sigma rule.
 - `src/tiny/frontend/espeak/`: espeak-ng 1.52.0 compiled to plain JS
   (`npm run build:espeak`), with phonemizer's and misaki's post-processing.
+- `src/tiny/frontend/japanese/`: Mini's Japanese: cutlet ported, and MeCab's
+  lattice/Viterbi in TypeScript over UniDic rebuilt by
+  `tools/kitten-tts-2-tiny/japanese_data.py` (ja/*.bin; JapaneseG2P keeps views
+  on the bytes it is given and decodes the matrix in place).
+- `src/tiny/WordTimings.ts`: word timings from the graph's durations.
 - `src/tiny/KittenTTS2Tiny.ts`, `TinySynth.ts`: downloads per language, voices,
   chunk trimming and fades as in Python's `_chunk`.
-- The text data (`en/`, `espeak-ng-data/`) is built by
-  `tools/kitten-tts-2-tiny/build_text_pack.py` and downloaded from
-  `textDataURL`.
+- The text data (`en/`, `espeak-ng-data/`, `ja/`, `manifest.json`) is built by
+  `tools/kitten-tts-2-tiny/build_text_pack.py`, hosted on Hugging Face
+  (`DEFAULT_TEXT_DATA_URL`, dewan-sl/kitten-tts-2-text) and downloaded per
+  language; big files are gzipped there and unpacked once on the device.
+- On React Native, read files with `platform.ts` (base64 + atob), not
+  react-native-fs's utf8 reading, which decodes in JavaScript and took seconds.
 
 Traps:
 
@@ -123,9 +131,11 @@ Traps:
   and web must not import `node:` modules (hence `loader/NPZParser.ts`).
 - Both Emscripten runtimes need `-sWASM=0` (Hermes has no WebAssembly), which
   Emscripten 7 marks deprecated: pin the emsdk version if it is removed.
-- Tests that need data skip without `KITTEN_TTS_2_TINY_DATA` (a folder with
-  `en/` and `espeak-ng-data/`, plus `vocab-nano.json` and `g2p/` for the English
-  test); model files come from the Hugging Face cache.
+- The models need Hermes from React Native 0.75: the regexes built at run time
+  use `\p{...}` and `\u{...}`, which Babel cannot rewrite (it rewrites literals).
+- Tests that need data skip without `KITTEN_TTS_2_TINY_DATA` (the text data
+  folder as built, gzipped files included); model files come from the Hugging
+  Face cache (`tests/helpers/tiny-data.js`).
 
 ## Error Handling
 

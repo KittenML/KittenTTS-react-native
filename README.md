@@ -218,13 +218,13 @@ const tts = await KittenTTS.create({ model: 'kitten-tts-2-nano', languages: ['en
 await tts.generate('Guten Morgen.', { voice: 'Paul' });
 ```
 
-| Model | Parameters | int8 / int4 per model | Languages |
-| --- | --- | --- | --- |
-| `kitten-tts-2-pico` | 7.2M | 8 / 4 MB per language | en de es it pt ru hi fr |
-| `kitten-tts-2-nano` | 17M | 17 / 8.8 MB per language | en de es it pt ru hi fr |
-| `kitten-tts-2-mini` | 82M | 83 / 47 MB | 15 (Japanese not yet) |
+| Model | Parameters | int8 / int4 per model | Languages | Real-time factor, Galaxy S24 Ultra |
+| --- | --- | --- | --- | --- |
+| `kitten-tts-2-pico` | 7.2M | 8 / 4 MB per language | en de es it pt ru hi fr | 0.05 (int4) |
+| `kitten-tts-2-nano` | 17M | 17 / 8.8 MB per language | en de es it pt ru hi fr | 0.08 (int8) |
+| `kitten-tts-2-mini` | 82M | 83 / 47 MB | 16, Japanese included | 0.44 (int8) |
 
-Their text data has to be hosted first: see
+They need React Native 0.75 or newer (Hermes).
 [Kitten TTS 2 Nano, Pico and Mini →](docs/guides/kitten-tts-2-tiny.md)
 
 ## Voices
