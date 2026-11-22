@@ -25,7 +25,8 @@
     "./lib/engine/TTSEngine.js": "./lib/engine/TTSEngine.js",
     "./lib/loader/ModelDownloader.js": "./lib/loader/ModelDownloader.js",
     "./lib/loader/NPZLoader.js": "./lib/loader/NPZLoader.js",
-    "./lib/phonemizer/CEPhonemizer.js": "./lib/phonemizer/CEPhonemizer.js"
+    "./lib/phonemizer/CEPhonemizer.js": "./lib/phonemizer/CEPhonemizer.js",
+    "./lib/tiny/platform.js": "./lib/tiny/platform.js"
   },
   "exports": {
     ".": {
