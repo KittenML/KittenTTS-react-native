@@ -139,9 +139,10 @@ To host it elsewhere, build it with `tools/kitten-tts-2-tiny/build_text_pack.py`
   x.5 before rounding comes out one frame (25 ms) different, because another
   ONNX Runtime build rounds it the other way.
 - **On devices:** the test texts in 9 languages gave exactly Python's phonemes
-  on 10 real phones (3 iPhones and 7 Android phones; Japanese on the 6 of the
-  latest run), in the iOS simulator and in the Android emulator, on React Native
-  0.83 and 0.88. Whisper heard the right words in every clip.
+  on 16 real phones (5 iPhones and 11 Android phones, from a 2017 Galaxy Tab S3
+  to a Galaxy S25; Japanese on the 13 of the last two runs), in the iOS simulator
+  and in the Android emulator, on React Native 0.83 and 0.88. Whisper heard the
+  right words in every clip.
 
 The tests in `tests/kitten-tts-2-tiny-*.test.js` check all of this against
 fixtures written by the Python package (`tools/kitten-tts-2-tiny/*_fixtures.py`);
@@ -162,18 +163,29 @@ phone that answered is listed, TestMu sometimes swaps them):
 | iPhone 16 Pro (A18 Pro, iOS 18.6) | 0.064 | 0.040 | 0.41 | 1.05 / 0.64 / 6.9 s |
 | iPhone 15 Pro (A17 Pro, iOS 17.6) | 0.080 | 0.047 | 0.44 | 1.35 / 0.79 / 7.2 s |
 | iPhone 15 (A16, iOS 17.6) | 0.091 | 0.055 | 0.50 | 1.45 / 0.90 / 8.5 s |
+| iPhone 13 (A15, iOS 15.1 and 15.2), two runs | 0.100–0.102 | 0.053–0.061 | 0.58–0.61 | 1.7–1.8 / 0.96–1.0 / 9.8–10.2 s |
+| iPhone 12 mini (A14, iOS 17.6) | 0.119 | 0.070 | 0.79 | 2.1 / 1.2 / 15.9 s |
+| Galaxy S25 (Snapdragon 8 Elite, Android 15) | 0.077 | 0.038 | 0.54 | 1.26 / 0.72 / 6.8 s |
 | Galaxy S24 Ultra (Snapdragon 8 Gen 3), two runs | 0.084–0.087 | 0.054–0.056 | 0.44–0.47 | 1.35–1.5 / 0.75–0.85 / 7.7–8.0 s |
 | Galaxy S24 (Exynos 2400), two runs | 0.094–0.097 | 0.054–0.060 | 0.43–0.53 | 1.4–1.5 / 0.75–0.93 / 7.2–11.3 s |
 | Galaxy S23 (Snapdragon 8 Gen 2) | 0.105 | 0.059 | 0.56 | 1.8 / 1.06 / 9.4 s |
 | Galaxy S22 Ultra | 0.112 | 0.077 | 0.66 | 2.0 / 1.3 / 10.5 s |
 | Pixel 8 (Tensor G3) | 0.142 | 0.092 | 0.72 | 2.3 / 1.3 / 20.2 s |
-| Pixel 6 (Tensor G1) | 0.154 | 0.098 | 0.71 | 2.3 / 1.3 / 12.5 s |
+| Pixel 6 (Tensor G1), two runs | 0.154 | 0.098–0.10 | 0.71–0.74 | 2.3–2.4 / 1.3–1.5 / 12.4–12.5 s |
+| Galaxy S20 5G (Snapdragon 865, Android 10) | 0.150 | 0.088 | 0.70 | 2.8 / 1.4 / 11.5 s |
 | Huawei P50 Pro (JAD-AL80) | 0.157 | 0.095 | 0.81 | 2.4 / 1.9 / 12.9 s |
+| OPPO A96 (Snapdragon 680, budget, Android 11) | 0.457 | 0.258 | 2.18 | 6.8 / 4.3 / 32 s |
+| Galaxy Tab S3 (Snapdragon 820, 2017, 4 GB, Android 9) | 0.889 | 0.379 | 4.26 | 15.5 / 6.4 / 62 s |
 
 "First audio" is the first chunk of a long text (about 18 s of speech): the
-chunks are long, so streaming starts after one chunk's work. On these phones the
-first Japanese sentence of a fresh install took 11–20 s (downloading 12 MB of
-dictionary, unpacking and loading it); later sentences run at Mini's speed.
+chunks are long, so streaming starts after one chunk's work. On phones from 2020
+on, the first Japanese sentence of a fresh install took 11–20 s (downloading 12 MB
+of dictionary, unpacking and loading it), and 43–56 s on the OPPO A96 and the
+Galaxy Tab S3; later sentences run at Mini's speed.
+
+On budget and older Android phones Mini is slower than real time (RTF 2–4), so
+use Nano or Pico there: Pico stays well under real time even on the 2017 Galaxy
+Tab S3, and Nano just under it.
 
 On a Mac (M5 Pro) in the iOS simulator (iPhone 18 Pro, iOS 27.2) and the Android
 emulator (arm64, Android 17), React Native 0.88:
@@ -192,6 +204,23 @@ Turning a sentence into phonemes takes 1–10 ms on these devices, or about 100 
 when an unknown English word goes through the small G2P model. Japanese's first
 sentence mostly reads its 65 MB dictionary (react-native-fs hands files to
 JavaScript as base64); later sentences take about 1 ms.
+
+## Memory
+
+A loaded Nano with English takes about 160 MB; Mini with Japanese adds its 83 MB
+model and the 67 MB dictionary. A memory test (create, speak and dispose 8 times
+with Nano and 4 times with Mini and Japanese, then 60 `generate()` calls and long
+streams on one instance) found no leak on 8 real phones, in the iOS simulator and
+in the Android emulator:
+
+- The JavaScript heap stays at 36–44 MB, and the app's memory goes up and down
+  with use without growing, also over 40 long streams and 200 `generate()` calls
+  in a row.
+- After `dispose()`, iPhones and Android 12 and newer give the memory back to the
+  system. Android 9–11 keep the freed native memory in the app, where the next
+  model reuses it.
+- Every model, Japanese included, ran on 4 GB devices (iPhone 12 mini, iPhone 13,
+  Galaxy Tab S3) without the system stopping the app.
 
 ## Licence
 
