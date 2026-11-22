@@ -172,3 +172,5 @@ try {
 | `PHONEMIZER_FAILED` | Text-to-phoneme conversion failed |
 | `INFERENCE_FAILED` | ONNX Runtime setup or inference failed |
 | `PLAYBACK_FAILED` | Audio playback failed |
+| `INVALID_ARGUMENT` | An option or argument was not valid (Kitten TTS 2: unknown model, voice, language or weights, a bad speed, `generateToFile()` in a browser) |
+| `UNSUPPORTED_RUNTIME` | The JavaScript engine lacks what Kitten TTS 2 Nano, Pico and Mini need (Hermes from React Native 0.75) |

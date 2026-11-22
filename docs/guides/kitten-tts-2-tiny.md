@@ -47,6 +47,9 @@ await tts.speak('Hello!');             // with a player passed to create()
 await tts.dispose();
 ```
 
+`KittenTTS2Tiny.predownload(options, onProgress)` downloads a model's files for
+`options.languages` without loading it.
+
 `generate()` returns a `KittenTTSResult` (24 kHz float samples, `wavData()`,
 `duration`); `result.voice` is the voice's name. Long text is cut at sentence
 ends into chunks of at most 350 phonemes, joined with 0.15 s of silence, as in
@@ -98,28 +101,28 @@ read plain files.
 
 ## Text data
 
-The English lexicons, the spaCy tagger and espeak-ng's data are not in the model
-repositories (Python gets them from pip packages), so the SDK downloads them from
-`textDataURL`, by default
+The English lexicons, the spaCy tagger, espeak-ng's data and the Japanese
+dictionary are not in the model repositories (Python gets them from pip
+packages), so the SDK downloads them from `textDataURL`, by default
 [huggingface.co/dewan-sl/kitten-tts-2-text](https://huggingface.co/dewan-sl/kitten-tts-2-text)
-(`DEFAULT_TEXT_DATA_URL`). To host it elsewhere, build the folder with the
-Python environment that has `kittenml` and upload it as is:
+(`DEFAULT_TEXT_DATA_URL`). The folder holds `en/`, `espeak-ng-data/`, `ja/`, a
+`manifest.json` (every file with its size and sha256, and which are gzipped) and
+a README with the sources and licences.
 
-```bash
-python -I tools/kitten-tts-2-tiny/build_text_pack.py out/kitten-tts-2-text
-```
-
-It writes `en/`, `espeak-ng-data/`, a `manifest.json` (every file with its size
-and sha256, and which are gzipped) and a README with the sources and licences.
-Point `textDataURL` at it, or copy it into the app and use `textDataDirectory`.
+To host it elsewhere, build it with `tools/kitten-tts-2-tiny/build_text_pack.py`
+([Development](../development.md#kitten-tts-2-nano-pico-and-mini-data)) and point
+`textDataURL` at it, or copy it into the app and use `textDataDirectory`.
 
 ## How it matches Python
 
 - **English:** `tts_norm` text normalisation, misaki's lexicon (with spaCy
   `en_core_web_sm`'s part-of-speech tags), then CMUdict and a small BART model
   for unknown words. All are ported to TypeScript, and the tagger's network runs
-  in ONNX Runtime with float16 weights. Every stage gives Python's output on 3,078
-  Wikipedia sentences, and the BART matches PyTorch on 8,846 words.
+  in ONNX Runtime with float16 weights. The committed English fixture is a sample
+  of 37 sentences. Bigger runs, with fixtures written by
+  `english_fixtures.py TEXTS.json` and read through
+  `KITTEN_TTS_2_TINY_ENGLISH_FIXTURE`, gave Python's output at every stage on 3,078
+  Wikipedia sentences, and the BART matched PyTorch on 8,846 words.
 - **Japanese (Mini):** misaki's cutlet G2P with MeCab and unidic-lite, as the
   Python package runs it (`pip install "kittenml[ja]"`). MeCab's lattice and
   Viterbi search are ported to TypeScript over the same dictionary, trimmed to the
@@ -128,23 +131,27 @@ Point `textDataURL` at it, or copy it into the app and use `textDataDirectory`.
   sentences, paragraphs and hard cases), token by token against fugashi.
 - **Other languages:** espeak-ng 1.52.0 (the version the Python package loads),
   compiled to plain JavaScript, with phonemizer's and misaki's post-processing
-  ported. It matches Python on 2,214 sentences in 14 languages.
+  ported. It matches Python on 1,471 texts in 14 languages (2,214 checks over the
+  two phonemizer versions).
 - **Speech:** the same tokens, voice style row and post-processing (trimming,
   fades, gaps) as Python. The graphs add random noise in the vocoder, so two runs
   never give identical samples, in Python either. Rarely, a duration that sits on
   x.5 before rounding comes out one frame (25 ms) different, because another
   ONNX Runtime build rounds it the other way.
-- **On devices:** the same 22 sentences in 8 languages gave exactly Python's
-  phonemes in the iOS simulator and Android emulator on React Native 0.83 and
-  0.88, and Whisper heard the right words in every clip.
+- **On devices:** the test texts in 9 languages gave exactly Python's phonemes
+  on 10 real phones (3 iPhones and 7 Android phones; Japanese on the 6 of the
+  latest run), in the iOS simulator and in the Android emulator, on React Native
+  0.83 and 0.88. Whisper heard the right words in every clip.
 
 The tests in `tests/kitten-tts-2-tiny-*.test.js` check all of this against
-fixtures written by the Python package (`tools/kitten-tts-2-tiny/*_fixtures.py`).
+fixtures written by the Python package (`tools/kitten-tts-2-tiny/*_fixtures.py`);
+[Development](../development.md#run-all-the-kitten-tts-2-tests) says how to run
+them.
 
 ## Speed
 
 "Real-time factor" (RTF) is seconds of work per second of audio: below 1 is
-faster than real time. Release builds with Hermes, median over 22 sentences in 8
+faster than real time. Release builds with Hermes, median over 24 texts in 9
 languages.
 
 Real phones on TestMu (React Native 0.83, files downloaded on the device; the
@@ -152,14 +159,21 @@ phone that answered is listed, TestMu sometimes swaps them):
 
 | Phone | Nano int8 | Pico int4 | Mini int8 | First audio of a long text, Nano / Pico / Mini |
 | --- | --- | --- | --- | --- |
-| Galaxy S24 Ultra (Snapdragon 8 Gen 3) | 0.084 | 0.054 | 0.44 | 1.35 / 0.75 / 7.7 s |
+| iPhone 16 Pro (A18 Pro, iOS 18.6) | 0.064 | 0.040 | 0.41 | 1.05 / 0.64 / 6.9 s |
+| iPhone 15 Pro (A17 Pro, iOS 17.6) | 0.080 | 0.047 | 0.44 | 1.35 / 0.79 / 7.2 s |
+| iPhone 15 (A16, iOS 17.6) | 0.091 | 0.055 | 0.50 | 1.45 / 0.90 / 8.5 s |
+| Galaxy S24 Ultra (Snapdragon 8 Gen 3), two runs | 0.084–0.087 | 0.054–0.056 | 0.44–0.47 | 1.35–1.5 / 0.75–0.85 / 7.7–8.0 s |
 | Galaxy S24 (Exynos 2400), two runs | 0.094–0.097 | 0.054–0.060 | 0.43–0.53 | 1.4–1.5 / 0.75–0.93 / 7.2–11.3 s |
+| Galaxy S23 (Snapdragon 8 Gen 2) | 0.105 | 0.059 | 0.56 | 1.8 / 1.06 / 9.4 s |
 | Galaxy S22 Ultra | 0.112 | 0.077 | 0.66 | 2.0 / 1.3 / 10.5 s |
 | Pixel 8 (Tensor G3) | 0.142 | 0.092 | 0.72 | 2.3 / 1.3 / 20.2 s |
 | Pixel 6 (Tensor G1) | 0.154 | 0.098 | 0.71 | 2.3 / 1.3 / 12.5 s |
+| Huawei P50 Pro (JAD-AL80) | 0.157 | 0.095 | 0.81 | 2.4 / 1.9 / 12.9 s |
 
 "First audio" is the first chunk of a long text (about 18 s of speech): the
-chunks are long, so streaming starts after one chunk's work.
+chunks are long, so streaming starts after one chunk's work. On these phones the
+first Japanese sentence of a fresh install took 11–20 s (downloading 12 MB of
+dictionary, unpacking and loading it); later sentences run at Mini's speed.
 
 On a Mac (M5 Pro) in the iOS simulator (iPhone 18 Pro, iOS 27.2) and the Android
 emulator (arm64, Android 17), React Native 0.88:
@@ -185,4 +199,4 @@ espeak-ng is GPL-3.0-or-later, and its compiled JavaScript
 (`lib/tiny/frontend/espeak/generated/espeakng-runtime.js`) ships in this package.
 It loads only when a language other than English or Japanese is used. UniDic is
 BSD-3-Clause / LGPL-2.1 / GPL-2.0; the text data's README lists the licences of
-everything it holds.
+everything it holds. See [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

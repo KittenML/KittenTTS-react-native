@@ -37,6 +37,8 @@ Main flow:
 - `src/storage/AssetStorage.ts`: web/Node asset cache abstraction used by the web platform files.
 - `vendor/cephonemizer/`: vendored C++ phonemizer source.
 - `scripts/build-cephonemizer.js`: builds generated phonemizer runtime.
+- `scripts/build-espeak-ng.js`: builds the espeak-ng runtime for Kitten TTS 2
+  (`vendor/espeak-ng-bridge/`).
 - `scripts/patch-onnxruntime-react-native.js`: postinstall ONNX Runtime compatibility patches.
 - `examples/BareRNExample/`: bare React Native example.
 - `examples/ExpoExample/`: Expo development-build example.
@@ -51,12 +53,13 @@ npm run typecheck
 npm run build
 ```
 
-`npm run build` writes compiled output to `lib/` and copies generated
-phonemizer files. Do not hand-edit `lib/` unless the user explicitly asks;
+`npm run build` writes compiled output to `lib/` and copies the generated
+Emscripten runtimes. Do not hand-edit `lib/` unless the user explicitly asks;
 prefer editing `src/` and rebuilding.
 
-`npm run build:phonemizer` requires Emscripten and regenerates files under
-`src/phonemizer/generated/`.
+`npm run build:phonemizer` and `npm run build:espeak` require Emscripten
+(`docs/development.md`) and regenerate the runtimes under
+`src/phonemizer/generated/` and `src/tiny/frontend/espeak/generated/`.
 
 ## Dependency Notes
 
@@ -101,8 +104,9 @@ Python package writes (`tools/kitten-tts-2-tiny/*_fixtures.py`):
 
 - `src/tiny/frontend/english/`: tts_norm, num2words, spaCy's tokenizer and
   tagger features (the tagger network is `en/spacy-tagger.onnx`), misaki, and the
-  CMUdict/BART fallback. Python string semantics (`pystr.ts`) matter: code-point
-  lengths, Unicode `\d`/`\w`, `str.lower()` without the final-sigma rule.
+  CMUdict/BART fallback. Python string semantics (`src/tiny/frontend/pystr.ts`)
+  matter: code-point lengths, Unicode `\d`/`\w`, `str.lower()` without the
+  final-sigma rule.
 - `src/tiny/frontend/espeak/`: espeak-ng 1.52.0 compiled to plain JS
   (`npm run build:espeak`), with phonemizer's and misaki's post-processing.
 - `src/tiny/frontend/japanese/`: Mini's Japanese: cutlet ported, and MeCab's
@@ -113,9 +117,10 @@ Python package writes (`tools/kitten-tts-2-tiny/*_fixtures.py`):
 - `src/tiny/KittenTTS2Tiny.ts`, `TinySynth.ts`: downloads per language, voices,
   chunk trimming and fades as in Python's `_chunk`.
 - The text data (`en/`, `espeak-ng-data/`, `ja/`, `manifest.json`) is built by
-  `tools/kitten-tts-2-tiny/build_text_pack.py`, hosted on Hugging Face
-  (`DEFAULT_TEXT_DATA_URL`, dewan-sl/kitten-tts-2-text) and downloaded per
-  language; big files are gzipped there and unpacked once on the device.
+  `tools/kitten-tts-2-tiny/build_text_pack.py` (`docs/development.md`), hosted on
+  Hugging Face (`DEFAULT_TEXT_DATA_URL`, dewan-sl/kitten-tts-2-text) and
+  downloaded per language; big files are gzipped there and unpacked once on the
+  device.
 - On React Native, read files with `platform.ts` (base64 + atob), not
   react-native-fs's utf8 reading, which decodes in JavaScript and took seconds.
 
@@ -133,9 +138,10 @@ Traps:
   Emscripten 7 marks deprecated: pin the emsdk version if it is removed.
 - The models need Hermes from React Native 0.75: the regexes built at run time
   use `\p{...}` and `\u{...}`, which Babel cannot rewrite (it rewrites literals).
-- Tests that need data skip without `KITTEN_TTS_2_TINY_DATA` (the text data
-  folder as built, gzipped files included); model files come from the Hugging
-  Face cache (`tests/helpers/tiny-data.js`).
+- Tests that need data skip, and say why, without `KITTEN_TTS_2_TINY_DATA` (the
+  text data folder as built, gzipped files included); model files come from the
+  Hugging Face cache or `KITTEN_TTS_2_TINY_MODEL_DIR` (`tests/helpers/tiny-data.js`).
+  `docs/development.md` has the recipe that runs them all.
 
 ## Error Handling
 

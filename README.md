@@ -15,7 +15,7 @@
   <a href="https://discord.com/invite/VJ86W4SURW"><img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://kittenml.com"><img src="https://img.shields.io/badge/Website-kittenml.com-blue" alt="Website"></a>
   <a href="https://github.com/KittenML/kittentts-react-native"><img src="https://img.shields.io/badge/GitHub-kittentts--react--native-black?logo=github" alt="GitHub"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-green.svg" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0_%2B_GPL--3.0_(espeak--ng)-green.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/React%20Native-iOS%20%7C%20Android-61DAFB" alt="React Native iOS Android">
 </p>
 
@@ -210,22 +210,17 @@ matters more than size.
 
 ### Kitten TTS 2 Nano, Pico and Mini
 
-The small multilingual Kitten TTS 2 models run on device too, with the same
-voices and the same phonemes as the Python package:
+The small multilingual Kitten TTS 2 models (8 languages; Mini 16, Japanese
+included) run on device too, with the same voices and the same phonemes as the
+Python package. They need React Native 0.75 or newer (Hermes).
 
 ```tsx
 const tts = await KittenTTS.create({ model: 'kitten-tts-2-nano', languages: ['en', 'de'] });
 await tts.generate('Guten Morgen.', { voice: 'Paul' });
 ```
 
-| Model | Parameters | int8 / int4 per model | Languages | Real-time factor, Galaxy S24 Ultra |
-| --- | --- | --- | --- | --- |
-| `kitten-tts-2-pico` | 7.2M | 8 / 4 MB per language | en de es it pt ru hi fr | 0.05 (int4) |
-| `kitten-tts-2-nano` | 17M | 17 / 8.8 MB per language | en de es it pt ru hi fr | 0.08 (int8) |
-| `kitten-tts-2-mini` | 82M | 83 / 47 MB | 16, Japanese included | 0.44 (int8) |
-
-They need React Native 0.75 or newer (Hermes).
-[Kitten TTS 2 Nano, Pico and Mini →](docs/guides/kitten-tts-2-tiny.md)
+[Kitten TTS 2 Nano, Pico and Mini →](docs/guides/kitten-tts-2-tiny.md) (sizes,
+languages, speed)
 
 ## Voices
 
@@ -303,3 +298,7 @@ Need something specific? [Open an issue](https://github.com/KittenML/kittentts-r
 ## License
 
 Apache 2.0. See [LICENSE](./LICENSE).
+
+The package also ships espeak-ng compiled to JavaScript, which is
+GPL-3.0-or-later and loads only for the Kitten TTS 2 languages other than
+English and Japanese. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
