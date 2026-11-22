@@ -13,7 +13,8 @@
     "./lib/engine/TTSEngine.js": "./lib/engine/TTSEngine.web.js",
     "./lib/loader/ModelDownloader.js": "./lib/loader/ModelDownloader.web.js",
     "./lib/loader/NPZLoader.js": "./lib/loader/NPZLoader.web.js",
-    "./lib/phonemizer/CEPhonemizer.js": "./lib/phonemizer/CEPhonemizer.web.js"
+    "./lib/phonemizer/CEPhonemizer.js": "./lib/phonemizer/CEPhonemizer.web.js",
+    "./lib/tiny/platform.js": "./lib/tiny/platform.web.js"
   },
   "exports": {
     ".": {
@@ -51,6 +52,7 @@
     "build:ts": "tsc -p tsconfig.json && node scripts/copy-generated.js",
     "build:test": "tsc -p tsconfig.json",
     "build:phonemizer": "node scripts/build-cephonemizer.js",
+    "build:espeak": "node scripts/build-espeak-ng.js",
     "postinstall": "node scripts/patch-onnxruntime-react-native.js",
     "prepack": "npm run build",
     "prepublishOnly": "npm test",

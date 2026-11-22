@@ -10,6 +10,9 @@ import {
   isKittenTTSError,
 } from './KittenTTSError';
 import { KittenTTSResult } from './KittenTTSResult';
+import { KittenTTS2Tiny } from './tiny/KittenTTS2Tiny';
+import type { KittenTTS2TinyOptions } from './tiny/KittenTTS2Tiny';
+import { isTinyModel } from './tiny/TinyRepo';
 import { KittenModel, speedPrior } from './KittenModel';
 import { KittenVoice } from './KittenVoice';
 import type { KittenWordTiming } from './KittenWordTiming';
@@ -112,10 +115,24 @@ export class KittenTTS {
    * @param onProgress - Optional callback for download progress [0, 1].
    * @returns A ready-to-use KittenTTS instance.
    */
-  static async create(
+  static create(
+    options: KittenTTS2TinyOptions,
+    onProgress?: ProgressHandler,
+  ): Promise<KittenTTS2Tiny>;
+  static create(
     options?: KittenTTSCreateOptions,
     onProgress?: ProgressHandler,
-  ): Promise<KittenTTS> {
+  ): Promise<KittenTTS>;
+  static async create(
+    createOptions?: KittenTTSCreateOptions | KittenTTS2TinyOptions,
+    onProgress?: ProgressHandler,
+  ): Promise<KittenTTS | KittenTTS2Tiny> {
+    // Kitten TTS 2 nano / pico / mini: their own engine, like the Python package's
+    // KittenTTS("KittenML/kitten-tts-2-nano").
+    if (createOptions && isTinyModel(createOptions.model)) {
+      return KittenTTS2Tiny.create(createOptions as KittenTTS2TinyOptions, onProgress);
+    }
+    const options = createOptions as KittenTTSCreateOptions | undefined;
     const resolved = resolveConfig(options);
     const hasPhonemizerDownload =
       typeof resolved.phonemizer.downloadIfNeeded === 'function';

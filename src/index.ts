@@ -1,6 +1,15 @@
 export { KittenTTS } from './KittenTTS';
 export type { KittenTTSCreateOptions } from './KittenTTS';
 export { KittenTTSResult } from './KittenTTSResult';
+export { KittenTTS2Tiny, DEFAULT_TEXT_DATA_URL } from './tiny/KittenTTS2Tiny';
+export type {
+  KittenTTS2TinyOptions,
+  KittenTTS2TinyGenerateOptions,
+  KittenTTS2TinyVoice,
+} from './tiny/KittenTTS2Tiny';
+export { KITTEN_TTS_2_TINY_MODELS, isTinyModel } from './tiny/TinyRepo';
+export type { KittenTinyModel, KittenTinyWeights } from './tiny/TinyRepo';
+
 export type { KittenWordTiming } from './KittenWordTiming';
 export {
   KittenTTSError,

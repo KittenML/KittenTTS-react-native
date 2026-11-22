@@ -1,0 +1,440 @@
+// Kitten TTS 2 nano / pico / mini on device: small multilingual models run with ONNX
+// Runtime, the React Native counterpart of the Python package's KittenTTS2Tiny
+// (kittenml/kittentts2_tiny/model.py). Same voices, same text front end (phonemes
+// identical to Python's), same synthesis recipe.
+
+import { KittenTTSError, errorMessage, isKittenTTSError } from '../KittenTTSError';
+import { KittenTTSResult } from '../KittenTTSResult';
+import type { AudioPlayer, AudioPlayOptions, AudioOutput } from '../audio/AudioOutput';
+import type { ProgressHandler } from '../loader/ModelDownloader';
+import { loadNPZData } from '../loader/NPZLoader.web';
+import type { VoiceEmbeddings } from '../loader/NPZLoader.web';
+import type { AssetRequest, TinyAssetStore } from './assets';
+import { TinyFrontend } from './frontend/Frontend';
+import { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES, loadEnglishG2P } from './frontend/english/load';
+import { pyLower } from './frontend/english/pystr';
+import type { EspeakG2P } from './frontend/espeak/EspeakG2P';
+import type { OrtLike } from './ort';
+import { createSession } from './ort';
+import type { KittenTinyModel, KittenTinyWeights, TinyRepoConfig, TinyVoice } from './TinyRepo';
+import { huggingFaceResolveURL, modelFiles, onnxWeights, tinyRepoId } from './TinyRepo';
+import { GAP_SECONDS, TinySynth } from './TinySynth';
+
+/**
+ * Where the text front end's data lives: misaki's lexicons, spaCy's tokenizer and tagger
+ * (en/...) and espeak-ng's data (espeak-ng-data/...), as written by
+ * tools/kitten-tts-2-tiny/build_text_pack.sh. Not hosted yet: pass `textDataURL`.
+ */
+export const DEFAULT_TEXT_DATA_URL = 'https://huggingface.co/KittenML/kitten-tts-2-text/resolve/main';
+/** Cache folder of the text data; bump when its files change. */
+const TEXT_DIR = 'kitten-tts-2-text-v1';
+
+export interface KittenTTS2TinyOptions {
+  /** `'kitten-tts-2-nano'`, `'kitten-tts-2-pico'` or `'kitten-tts-2-mini'` (or the `KittenML/...` repository). */
+  model: KittenTinyModel;
+  /** ONNX weights: `'int8'` (default) or `'int4'` (about half the size). */
+  weights?: KittenTinyWeights;
+  /** Languages to download and load in `create()`. Others are fetched on first use. Default: the model's default language. */
+  languages?: string[];
+  /** Cache folder. Default: `<DocumentDirectory>/KittenTTS` on device. */
+  storageDirectory?: string;
+  /** Host of the model files instead of Hugging Face (a folder laid out like the repository). */
+  modelBaseURL?: string;
+  /** Host of the text front end's data. Default: {@link DEFAULT_TEXT_DATA_URL}. */
+  textDataURL?: string;
+  /** Attempts per file. Default 4. */
+  downloadRetries?: number;
+  /** ONNX Runtime intra-op threads for the speech model. */
+  ortNumThreads?: number;
+  /** Player for `speak()` and `play()`. */
+  player?: AudioPlayer;
+  /** For tests and custom hosts: ONNX Runtime and a file store to use instead of the platform's. */
+  platform?: { ort: OrtLike; store: TinyAssetStore };
+}
+
+export interface KittenTTS2TinyGenerateOptions {
+  /** A voice name from `availableVoices` in any case, or its description. Default: the language's first voice. */
+  voice?: string;
+  /** A code from `languages`. Default: the voice's language, else the model's default language. */
+  language?: string;
+  /** Larger is faster. Default 1. */
+  speed?: number;
+}
+
+export interface KittenTTS2TinyVoice {
+  key: string;
+  name: string;
+  description: string;
+  language: string;
+}
+
+interface Platform {
+  ort: OrtLike;
+  store: TinyAssetStore;
+}
+
+export class KittenTTS2Tiny {
+  /** The repository, e.g. `KittenML/kitten-tts-2-nano`. */
+  readonly repoId: string;
+  readonly weights: KittenTinyWeights;
+  readonly sampleRate: number;
+  /** Language codes the model speaks. */
+  readonly languages: string[];
+  readonly defaultLanguage: string;
+
+  private readonly frontend: TinyFrontend;
+  private readonly synth: TinySynth;
+  private readonly packs = new Map<string, Promise<VoiceEmbeddings>>();
+  private readonly prepared = new Map<string, Promise<void>>();
+  private espeak: Promise<EspeakG2P> | null = null;
+  private audio: Promise<AudioOutput> | null = null;
+  private disposed = false;
+
+  private constructor(
+    private readonly platform: Platform,
+    private readonly config: TinyRepoConfig,
+    private readonly vocab: Record<string, number>,
+    private readonly options: KittenTTS2TinyOptions & { weights: KittenTinyWeights },
+    repoId: string,
+  ) {
+    this.repoId = repoId;
+    this.weights = options.weights;
+    this.sampleRate = config.sample_rate ?? 24000;
+    this.languages = Object.keys(config.languages);
+    this.defaultLanguage = config.default_language ?? this.languages[0];
+    this.frontend = new TinyFrontend(config.phonemizer ?? 'v1', vocab, {
+      english: v1 => this.loadEnglish(v1),
+      espeak: lang => this.loadEspeak(lang),
+    });
+    this.synth = new TinySynth(platform.ort, vocab, async file => {
+      const key = this.modelKey(file);
+      const model = platform.store.path?.(key) ?? (await platform.store.bytes(key));
+      return createSession(platform.ort, model, { intraOpNumThreads: options.ortNumThreads });
+    });
+  }
+
+  /**
+   * Download what the model needs (config, the first languages' graphs, voices and text
+   * data) and load it.
+   */
+  static async create(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<KittenTTS2Tiny> {
+    const repoId = tinyRepoId(options.model);
+    if (!repoId) throw KittenTTSError.invalidArgument(`Unknown model ${String(options.model)}`);
+    const platform = options.platform ?? (await (await import('./platform')).defaultTinyPlatform(options));
+    const dir = repoId.split('/')[1];
+    const base = options.modelBaseURL ?? huggingFaceResolveURL(repoId);
+    await platform.store.ensure(
+      ['config.json', 'vocab.json'].map(f => ({ key: `${dir}/${f}`, url: `${base}/${f}` })),
+    );
+    let config: TinyRepoConfig;
+    let vocab: Record<string, number>;
+    try {
+      config = JSON.parse(await platform.store.text(`${dir}/config.json`));
+      vocab = JSON.parse(await platform.store.text(`${dir}/${config.vocab ?? 'vocab.json'}`));
+    } catch (error) {
+      await platform.store.clear(dir);
+      throw KittenTTSError.invalidModelData(`Could not read ${repoId}'s config: ${errorMessage(error)}`, error);
+    }
+    if (config.type !== 'KITTEN2_TINY') {
+      throw KittenTTSError.invalidModelData(`${repoId} is not a Kitten TTS 2 nano / pico / mini repository`);
+    }
+    const weights = options.weights ?? config.default_weights ?? 'int8';
+    if (!onnxWeights(config).includes(weights)) {
+      throw KittenTTSError.invalidArgument(
+        `${config.name ?? repoId} has no ${weights} ONNX weights; expected one of ${onnxWeights(config).join(', ')}`,
+      );
+    }
+    const tts = new KittenTTS2Tiny(platform, config, vocab, { ...options, weights }, repoId);
+    const langs = options.languages ?? [tts.defaultLanguage];
+    for (const lang of langs) tts.language(lang);
+    const files = await Promise.all(langs.map(l => tts.filesFor(l)));
+    await platform.store.ensure(files.flat(), onProgress);
+    await Promise.all(langs.map(l => tts.prepare(l)));
+    return tts;
+  }
+
+  /** Download a model's files without keeping it loaded. */
+  static async predownload(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<void> {
+    const tts = await KittenTTS2Tiny.create(options, onProgress);
+    await tts.dispose();
+  }
+
+  // ---- voices -----------------------------------------------------------------------------
+
+  /** Voice names per language: `{ en: ['Eleanor', ...], de: ['Anna', ...] }`. */
+  get availableVoices(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const [lang, vs] of Object.entries(this.config.voices)) out[lang] = vs.map(v => v.name);
+    return out;
+  }
+
+  /** The voices of one language (default: all), with key, name, description and language. */
+  voices(language?: string): KittenTTS2TinyVoice[] {
+    const langs = language ? [this.language(language)] : this.languages;
+    return langs.flatMap(lang => (this.config.voices[lang] ?? []).map(v => ({
+      key: v.key,
+      name: v.name,
+      description: v.description ?? '',
+      language: lang,
+    })));
+  }
+
+  /**
+   * `[language, voice key]` for a voice name in any case, a description, or nothing (the
+   * language's first voice). Without a language, a name only one language has decides
+   * it; a name several share means the default language's voice.
+   */
+  resolveVoice(voice?: string, language?: string): [string, string] {
+    if (voice == null) {
+      const lang = this.language(language);
+      return [lang, this.config.voices[lang][0].key];
+    }
+    const langs = language ? [this.language(language)] : this.languages;
+    const want = pyLower(String(voice));
+    const hits: Array<[string, string]> = [];
+    for (const lang of langs) {
+      for (const v of this.config.voices[lang] ?? []) {
+        const names = (['key', 'name', 'description', 'id'] as const)
+          .filter(f => f in v)
+          .map(f => pyLower(String((v as TinyVoice)[f] ?? '')));
+        if (names.includes(want)) hits.push([lang, v.key]);
+      }
+    }
+    if (hits.length === 0) {
+      throw KittenTTSError.invalidArgument(`No voice ${JSON.stringify(voice)}${language ? ` for ${language}` : ''}`);
+    }
+    if (hits.length > 1) {
+      if (!language) {
+        const d = hits.find(h => h[0] === this.defaultLanguage);
+        if (d) return d;
+      }
+      throw KittenTTSError.invalidArgument(
+        `Voice ${JSON.stringify(voice)} exists in ${hits.map(h => h[0]).join(', ')}: pass language`,
+      );
+    }
+    return hits[0];
+  }
+
+  // ---- synthesis --------------------------------------------------------------------------
+
+  /** text -> the phoneme chunks the model will speak. */
+  async phonemize(text: string, language?: string): Promise<string[]> {
+    this.ensureOpen();
+    const lang = this.language(language);
+    await this.prepare(lang);
+    return this.frontend.phonemize(text, lang);
+  }
+
+  /** Synthesize `text`: 24 kHz float32 audio. Long text is cut at sentence ends and joined with 0.15 s of silence. */
+  async generate(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): Promise<KittenTTSResult<string>> {
+    const opts = normalizeOptions(voiceOrOptions, speed);
+    const parts: Float32Array[] = [];
+    let voiceName = '';
+    for await (const r of this.generateStreaming(text, opts)) {
+      parts.push(r.samples);
+      voiceName = r.voice;
+    }
+    const gap = Math.floor(GAP_SECONDS * this.sampleRate);
+    const total = parts.reduce((n, p) => n + p.length, 0) + gap * Math.max(0, parts.length - 1);
+    const samples = new Float32Array(total);
+    let at = 0;
+    parts.forEach((p, i) => {
+      samples.set(p, at);
+      at += p.length + (i < parts.length - 1 ? gap : 0);
+    });
+    if (!voiceName) voiceName = this.voiceName(...this.resolveVoice(opts.voice, opts.language));
+    return new KittenTTSResult(samples, this.sampleRate, voiceName, opts.speed ?? 1, text);
+  }
+
+  /** Synthesize chunk by chunk, yielding each as soon as it is ready. */
+  async *generateStreaming(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): AsyncGenerator<KittenTTSResult<string>, void, void> {
+    this.ensureOpen();
+    const opts = normalizeOptions(voiceOrOptions, speed);
+    const s = opts.speed ?? 1;
+    if (!Number.isFinite(s) || s <= 0) throw KittenTTSError.invalidArgument(`speed must be a positive number, got ${s}`);
+    if (!text || !text.trim()) throw KittenTTSError.emptyInput();
+    const [lang, key] = this.resolveVoice(opts.voice, opts.language);
+    await this.prepare(lang);
+    let chunks: string[];
+    try {
+      chunks = await this.frontend.phonemize(text, lang);
+    } catch (error) {
+      if (isKittenTTSError(error)) throw error;
+      throw KittenTTSError.phonemizerFailed(errorMessage(error), error);
+    }
+    const entry = this.config.languages[lang];
+    const file = modelFiles(entry)[this.weights] as string;
+    const pack = (await this.pack(lang))[key];
+    if (!pack) throw KittenTTSError.invalidModelData(`voices for ${lang} have no ${key}`);
+    const name = this.voiceName(lang, key);
+    for (let i = 0; i < chunks.length; i++) {
+      this.ensureOpen();
+      let samples: Float32Array;
+      try {
+        samples = await this.synth.chunk(file, pack, chunks[i], s, i === 0);
+      } catch (error) {
+        throw KittenTTSError.inferenceFailed(errorMessage(error), error);
+      }
+      yield new KittenTTSResult(samples, this.sampleRate, name, s, text);
+    }
+  }
+
+  /** Generate and play through the configured player. */
+  async speak(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): Promise<KittenTTSResult<string>> {
+    const result = await this.generate(text, voiceOrOptions, speed);
+    await this.play(result);
+    return result;
+  }
+
+  async play(result: KittenTTSResult<string>, options: AudioPlayOptions = {}): Promise<void> {
+    this.ensureOpen();
+    await (await this.audioOutput()).play(result.samples, result.sampleRate, options);
+  }
+
+  async stopSpeaking(): Promise<void> {
+    if (this.audio) await (await this.audio).stop();
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    await this.stopSpeaking().catch(() => {});
+    await this.synth.dispose();
+    if (this.espeak) (await this.espeak.catch(() => null))?.dispose();
+  }
+
+  // ---- files ------------------------------------------------------------------------------
+
+  private language(language?: string): string {
+    if (language == null) return this.defaultLanguage;
+    if (!this.config.languages[language]) {
+      throw KittenTTSError.invalidArgument(
+        `${this.config.name ?? this.repoId} does not speak ${JSON.stringify(language)}; languages: ${this.languages.join(', ')}`,
+      );
+    }
+    return language;
+  }
+
+  private voiceName(lang: string, key: string): string {
+    return this.config.voices[lang]?.find(v => v.key === key)?.name ?? key;
+  }
+
+  private modelKey(file: string): string {
+    return `${this.repoId.split('/')[1]}/${file}`;
+  }
+
+  private modelURL(file: string): string {
+    return `${this.options.modelBaseURL ?? huggingFaceResolveURL(this.repoId)}/${file}`;
+  }
+
+  private textURL(file: string): string {
+    return `${this.options.textDataURL ?? DEFAULT_TEXT_DATA_URL}/${file}`;
+  }
+
+  /** Every file one language needs: graph, voices and front-end data. */
+  private async filesFor(lang: string): Promise<AssetRequest[]> {
+    const entry = this.config.languages[lang];
+    const model = [modelFiles(entry)[this.weights] as string, entry.voices]
+      .map(f => ({ key: this.modelKey(f), url: this.modelURL(f) }));
+    const g2pDir = this.config.g2p_dir ?? 'g2p';
+    let text: AssetRequest[];
+    if (lang === 'en') {
+      text = [
+        ...ENGLISH_TEXT_FILES.map(f => ({ key: `${TEXT_DIR}/${f}`, url: this.textURL(f) })),
+        ...ENGLISH_G2P_FILES.map(f => {
+          const file = f.replace(/^g2p\//, `${g2pDir}/`);
+          return { key: this.modelKey(file), url: this.modelURL(file) };
+        }),
+      ];
+    } else {
+      // Loaded lazily so apps that only speak English never load espeak-ng.
+      const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
+      text = espeakDataFilesFor(lang).map(f => ({
+        key: `${TEXT_DIR}/espeak-ng-data/${f}`,
+        url: this.textURL(`espeak-ng-data/${f}`),
+      }));
+    }
+    return [...model, ...text];
+  }
+
+  /** Download (if needed) and load one language. */
+  private prepare(lang: string): Promise<void> {
+    let p = this.prepared.get(lang);
+    if (!p) {
+      p = (async () => {
+        await this.platform.store.ensure(await this.filesFor(lang));
+        const entry = this.config.languages[lang];
+        await Promise.all([
+          this.synth.prepare(modelFiles(entry)[this.weights] as string),
+          this.pack(lang),
+        ]);
+      })();
+      p.catch(() => this.prepared.delete(lang));
+      this.prepared.set(lang, p);
+    }
+    return p;
+  }
+
+  private pack(lang: string): Promise<VoiceEmbeddings> {
+    const file = this.config.languages[lang].voices;
+    let p = this.packs.get(file);
+    if (!p) {
+      p = this.platform.store.bytes(this.modelKey(file)).then(b => loadNPZData(b, file));
+      p.catch(() => this.packs.delete(file));
+      this.packs.set(file, p);
+    }
+    return p;
+  }
+
+  private loadEnglish(vocabV1: ReadonlySet<string>) {
+    const store = this.platform.store;
+    const g2pDir = this.config.g2p_dir ?? 'g2p';
+    const key = (name: string) => (name.startsWith('g2p/')
+      ? this.modelKey(name.replace(/^g2p\//, `${g2pDir}/`))
+      : `${TEXT_DIR}/${name}`);
+    return loadEnglishG2P(
+      {
+        text: name => store.text(key(name)),
+        bytes: name => store.bytes(key(name)),
+        path: store.path ? name => store.path?.(key(name)) : undefined,
+      },
+      this.platform.ort,
+      vocabV1,
+    );
+  }
+
+  private loadEspeak(lang: string): Promise<EspeakG2P> {
+    const files = async (l: string) => {
+      const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
+      const out: Record<string, Uint8Array> = {};
+      for (const f of espeakDataFilesFor(l)) out[f] = await this.platform.store.bytes(`${TEXT_DIR}/espeak-ng-data/${f}`);
+      return out;
+    };
+    const prev = this.espeak;
+    const next = (async () => {
+      const { EspeakG2P } = await import('./frontend/espeak/EspeakG2P');
+      const existing = prev ? await prev.catch(() => null) : null;
+      if (existing) {
+        if (!existing.hasLanguage(lang)) existing.addFiles(await files(lang));
+        return existing;
+      }
+      return EspeakG2P.create(await files(lang));
+    })();
+    this.espeak = next;
+    return next;
+  }
+
+  private audioOutput(): Promise<AudioOutput> {
+    this.audio ??= import('../audio/AudioOutput').then(m => new m.AudioOutput(this.options.player));
+    return this.audio;
+  }
+
+  private ensureOpen(): void {
+    if (this.disposed) throw KittenTTSError.engineNotReady();
+  }
+}
+
+function normalizeOptions(v?: string | KittenTTS2TinyGenerateOptions, speed?: number): KittenTTS2TinyGenerateOptions {
+  if (typeof v === 'string') return { voice: v, speed };
+  return { ...(v ?? {}), ...(speed !== undefined ? { speed } : {}) };
+}

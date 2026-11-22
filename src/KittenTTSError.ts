@@ -13,6 +13,7 @@ export enum KittenTTSErrorCode {
   InvalidModelData = 'INVALID_MODEL_DATA',
   PhonemizerFailed = 'PHONEMIZER_FAILED',
   PlaybackFailed = 'PLAYBACK_FAILED',
+  InvalidArgument = 'INVALID_ARGUMENT',
 }
 
 /** Errors thrown by the KittenTTS SDK. */
@@ -25,6 +26,10 @@ export class KittenTTSError extends Error {
     this.name = 'KittenTTSError';
     this.code = code;
     this.cause = cause;
+  }
+
+  static invalidArgument(detail: string): KittenTTSError {
+    return new KittenTTSError(KittenTTSErrorCode.InvalidArgument, detail);
   }
 
   static emptyInput(): KittenTTSError {
