@@ -53,6 +53,7 @@ ends into chunks of at most 350 phonemes, joined with 0.15 s of silence, as in
 Python. `result.wordTimings` gives each input word's start and end: exact per
 phoneme word from the model's durations, shared out over the text's words (a
 number or date that expands to several spoken words gets all of their time).
+Text is split into words at spaces, so Japanese text without spaces is one word.
 Streaming chunks carry no word timings.
 
 | `generate` option | Default | |
@@ -171,9 +172,12 @@ emulator (arm64, Android 17), React Native 0.88:
 | `create()` with English, files cached | 0.36–0.48 s | 0.32–0.65 s |
 | `create()` with English, first run (downloads) | 2.3–9.1 s | 1.6–10.6 s |
 | First sentence in another language, files cached | 0.2–0.43 s | 0.14–0.39 s |
+| First Japanese sentence (Mini): cached / first run | 3.2 s / 9.8 s | 2.7 s / 9.1 s |
 
 Turning a sentence into phonemes takes 1–10 ms on these devices, or about 100 ms
-when an unknown English word goes through the small G2P model.
+when an unknown English word goes through the small G2P model. Japanese's first
+sentence mostly reads its 65 MB dictionary (react-native-fs hands files to
+JavaScript as base64); later sentences take about 1 ms.
 
 ## Licence
 
