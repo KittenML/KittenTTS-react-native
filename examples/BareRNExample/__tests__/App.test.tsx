@@ -15,6 +15,7 @@ jest.mock('@kittentts/react-native', () => ({
   KittenTTS2: class {},
   KittenTTS2Tiny: class {},
   createRNSoundPlayer: () => ({}),
+  approximateDownloadBytes: () => 28_000_000,
   modelDisplayName: (model: string) => model,
   voiceDisplayName: (voice: string) => voice,
 }));

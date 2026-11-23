@@ -34,8 +34,8 @@
 ## See It In Action
 
 <p align="center">
-  <img src="assets/expo-example.gif" alt="KittenTTS Expo example running on iOS" width="48%" />
-  <img src="assets/word-timing-example.gif" alt="KittenTTS word highlighting demo on Android" width="48%" />
+  <img src="assets/expo-example.png" alt="KittenTTS Expo example running on iOS" width="40%" />
+  <img src="assets/word-timing-example.png" alt="KittenTTS word highlighting demo on Android" width="40%" />
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/web-example.gif" alt="KittenTTS React Native Web example running in a browser" width="90%" />
+  <img src="assets/web-example.png" alt="KittenTTS React Native Web example running in a browser" width="90%" />
 </p>
 
 <p align="center">

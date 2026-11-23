@@ -70,6 +70,9 @@ Main flow:
   Kitten TTS 2 on the device).
 - `examples/OfflineBundledAssetsExample/`: Expo SDK 58, models bundled into the
   app (0.8 and Kitten TTS 2 Nano).
+- The examples share one design: `components/ui.tsx` (shadcn-style controls in
+  KittenML's light and dark colors, the KittenML logo from `assets/kittenml.png`,
+  no UI library) is the same file in all four; change it in all of them.
 - The examples depend on the published SDK version and have no lockfiles;
   `npm run example:install -- <example>` installs this checkout into one.
 

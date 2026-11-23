@@ -9,9 +9,10 @@ An Expo (SDK 58) app for `@kittentts/react-native` with every engine the SDK has
 - **TTS 2 cloud**: Kitten TTS 2 Cloud, and Nano, Pico and Mini, on the Kitten API. Needs
   an API key (or your own backend, below).
 
-Pick an engine, a model, a language and a voice, then **Generate** (shows how
-long it took and the real-time factor) or **Speak** (and **Stop**). It runs on
-iOS, Android and the web.
+One screen: pick a model (they are grouped by where they run), type, choose a
+language, voice and speed, then **Speak** (and **Stop**) or **Generate**, which
+shows how long it took. It runs on iOS, Android and the web, in light and dark
+mode, with the look of KittenML's web app (`components/ui.tsx`, no UI library).
 
 Expo Go is not supported because the SDK depends on native modules for ONNX
 inference and filesystem access. Use a development build.

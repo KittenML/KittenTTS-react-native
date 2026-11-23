@@ -20,12 +20,12 @@ the native Android/iOS projects.
 
 ## Features
 
-- Engine and model selection: 0.8 (Nano, Nano int8, Micro, Mini), Kitten TTS 2
-  on the device (Nano, Pico, Mini), Kitten TTS 2 Cloud and the cloud Nano, Pico, Mini
-- Language and voice selection from the loaded model
-- Adjustable speed (0.5x to 2x)
-- Generate, speak and stop
-- Download progress, and a result card with the time taken and the real-time factor
+- One model picker for every engine: 0.8 (Nano, Nano int8, Micro, Mini), Kitten
+  TTS 2 on the device (Nano, Pico, Mini), Kitten TTS 2 Cloud and the cloud Nano,
+  Pico and Mini
+- Language and voice pickers filled from the loaded model, and speed
+- Speak, stop and generate, with download progress and how long it took
+- Light and dark mode, in the style of KittenML's web app (`components/ui.tsx`)
 
 For the cloud models, type a Kitten API key into the app, or set `ENV_BASE_URL` in
 `App.tsx` to your own backend, which adds the key (see the
