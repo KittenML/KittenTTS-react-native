@@ -419,6 +419,7 @@ test('Android: bundled files are copied once, again only when they changed', asy
 
 const nanoDir = data.modelDir('kitten-tts-2-nano');
 const realSkip = data.textDataSkip('manifest.json', ...ENGLISH_TEXT_FILES)
+  || data.espeakNgSkip()
   || (nanoDir ? false : 'kitten-tts-2-nano is not in the Hugging Face cache (or KITTEN_TTS_2_TINY_MODEL_DIR)')
   || (nanoDir && !fs.existsSync(path.join(nanoDir, 'kitten_tts_2_nano_de.onnx')) ? 'the cached kitten-tts-2-nano has no German graph' : false);
 

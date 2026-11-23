@@ -25,7 +25,6 @@ examples/OfflineBundledAssetsExample/assets/kittentts/
 # Logs and caches
 lib/
 src/phonemizer/generated/cephonemizer-runtime.js
-src/tiny/frontend/espeak/generated/espeakng-runtime.js
 *.log
 npm-debug.log*
 yarn-debug.log*

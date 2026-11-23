@@ -1,5 +1,5 @@
 // Which espeak-ng-data files each language needs, apart from the espeak-ng runtime
-// (generated/espeakng.js, GPL-3.0-or-later), so listing a language's downloads does not
+// (@kittentts/espeak-ng, GPL-3.0-or-later), so listing a language's downloads does not
 // load the runtime.
 
 /** Read by espeak_Initialize; needed by every language. */

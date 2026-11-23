@@ -29,6 +29,10 @@ const { cases } = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 function skipReason(c, dir) {
   const noText = data.textDataSkip('manifest.json');
   if (noText) return noText;
+  if (c.resolved[0] !== 'en' && c.resolved[0] !== 'ja') {
+    const noEspeak = data.espeakNgSkip();
+    if (noEspeak) return noEspeak;
+  }
   if (!dir) return `no local ${c.model} (KITTEN_TTS_2_TINY_MODEL_DIR or the Hugging Face cache)`;
   const configPath = path.join(dir, 'config.json');
   if (!fs.existsSync(configPath)) return `config.json missing in ${dir}`;

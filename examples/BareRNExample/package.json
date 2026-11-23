@@ -14,6 +14,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@kittentts/espeak-ng": "^1.0.0",
     "@kittentts/react-native": "^2.0.0",
     "onnxruntime-react-native": "^1.24.3",
     "react": "19.1.0",

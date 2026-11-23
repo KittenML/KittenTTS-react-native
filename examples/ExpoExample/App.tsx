@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ExpoAudio from 'expo-audio';
+// espeak-ng (GPL-3.0, its own package) for the languages other than English and Japanese.
+// Leave it out and the app ships no GPL code; those languages then say what to install.
+import '@kittentts/espeak-ng';
 import {
   ALL_VOICES,
   KittenModel,

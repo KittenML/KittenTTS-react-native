@@ -17,8 +17,6 @@ const allowMissing = process.argv.includes('--allow-missing');
 const runtimes = [
   // Required by lib/phonemizer/generated/cephonemizer.js (npm run build:phonemizer).
   path.join('phonemizer', 'generated', 'cephonemizer-runtime.js'),
-  // Required by lib/tiny/frontend/espeak/generated/espeakng.js (npm run build:espeak).
-  path.join('tiny', 'frontend', 'espeak', 'generated', 'espeakng-runtime.js'),
 ];
 
 const missing = [];
@@ -34,7 +32,7 @@ for (const file of runtimes) {
 }
 
 if (missing.length > 0) {
-  const message = `Missing generated runtime: ${missing.join(', ')} (npm run build:phonemizer, npm run build:espeak)`;
+  const message = `Missing generated runtime: ${missing.join(', ')} (npm run build:phonemizer)`;
   if (!allowMissing) throw new Error(message);
   console.warn(`copy-generated: ${message}`);
 }

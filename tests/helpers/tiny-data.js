@@ -65,4 +65,18 @@ async function nodePlatform() {
   return defaultTinyPlatform({ storageDirectory });
 }
 
-module.exports = { textDir, modelDir, readBytes, has, textDataSkip, englishReader, nodePlatform };
+/**
+ * espeak-ng is the separate GPL package @kittentts/espeak-ng. Load a built copy of it from
+ * KITTENTTS_ESPEAK_NG_DIR (importing it registers it, as an app's import does); false when
+ * it is loaded, else why the tests of languages other than English and Japanese skip.
+ */
+function espeakNgSkip() {
+  const dir = process.env.KITTENTTS_ESPEAK_NG_DIR;
+  if (!dir) return 'set KITTENTTS_ESPEAK_NG_DIR to a built @kittentts/espeak-ng (docs/development.md)';
+  const entry = path.join(path.resolve(dir), 'lib', 'index.js');
+  if (!fs.existsSync(entry)) return `${entry} missing: npm run build in @kittentts/espeak-ng`;
+  require(entry);
+  return false;
+}
+
+module.exports = { textDir, modelDir, readBytes, has, textDataSkip, englishReader, nodePlatform, espeakNgSkip };

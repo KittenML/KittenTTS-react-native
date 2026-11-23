@@ -23,6 +23,8 @@ export enum KittenTTSErrorCode {
   Cancelled = 'CANCELLED',
   /** The JavaScript engine can't run this model (Kitten TTS 2 Nano, Pico and Mini need Hermes from React Native 0.75). */
   UnsupportedRuntime = 'UNSUPPORTED_RUNTIME',
+  /** An optional package the call needs is not installed, such as @kittentts/espeak-ng for German. */
+  MissingDependency = 'MISSING_DEPENDENCY',
 }
 
 /** Errors thrown by the KittenTTS SDK. */
@@ -39,6 +41,10 @@ export class KittenTTSError extends Error {
 
   static invalidArgument(detail: string): KittenTTSError {
     return new KittenTTSError(KittenTTSErrorCode.InvalidArgument, detail);
+  }
+
+  static missingDependency(detail: string): KittenTTSError {
+    return new KittenTTSError(KittenTTSErrorCode.MissingDependency, detail);
   }
 
   static emptyInput(): KittenTTSError {

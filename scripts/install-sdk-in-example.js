@@ -5,7 +5,9 @@
 //   npm run example:install -- ExpoExample BareRNExample
 //
 // Builds lib/, packs it, and runs `npm install --no-save <tarball>` in each example, so
-// the example's package.json and lockfile keep pointing at the published package.
+// the example's package.json and lockfile keep pointing at the published package. With
+// KITTENTTS_ESPEAK_NG_DIR set to a checkout of @kittentts/espeak-ng, that is packed and
+// installed too (the examples that speak every language use it).
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -23,13 +25,22 @@ if (names.length === 0 || names.some(name => !all.includes(name))) {
 
 const run = (args, cwd) => execFileSync(npm, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
 
-// The generated runtimes (espeak-ng, the 0.8 phonemizer) must exist: `npm run build`
-// makes them once, with Emscripten (docs/development.md).
+function pack(dir) {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'kittentts-pack-'));
+  run(['pack', '--ignore-scripts', '--pack-destination', out], dir);
+  return path.join(out, fs.readdirSync(out).find(file => file.endsWith('.tgz')));
+}
+
+// The generated 0.8 phonemizer runtime must exist: `npm run build` makes it once, with
+// Emscripten (docs/development.md).
 run(['run', 'build:ts'], root);
-const out = fs.mkdtempSync(path.join(os.tmpdir(), 'kittentts-sdk-'));
-run(['pack', '--ignore-scripts', '--pack-destination', out], root);
-const tarball = path.join(out, fs.readdirSync(out).find(file => file.endsWith('.tgz')));
+const tarballs = [pack(root)];
+const espeakDir = process.env.KITTENTTS_ESPEAK_NG_DIR;
+if (espeakDir) {
+  run(['run', 'build:ts'], path.resolve(espeakDir));
+  tarballs.push(pack(path.resolve(espeakDir)));
+}
 for (const name of names) {
-  console.log(`\n${name}: installing ${path.basename(tarball)}`);
-  run(['install', '--no-save', '--no-audit', '--no-fund', tarball], path.join(root, 'examples', name));
+  console.log(`\n${name}: installing ${tarballs.map(t => path.basename(t)).join(', ')}`);
+  run(['install', '--no-save', '--no-audit', '--no-fund', ...tarballs], path.join(root, 'examples', name));
 }

@@ -2,8 +2,10 @@
 // (tests/fixtures/kitten-tts-2-tiny-espeak.json, written by
 // tools/kitten-tts-2-tiny/espeak_fixtures.py).
 //
-// Needs the espeak-ng JS runtime (npm run build:espeak; npm run build:test copies it into lib/)
-// and KITTEN_TTS_2_TINY_DATA (tests/helpers/tiny-data.js). The tests skip without either.
+// espeak-ng itself is the separate GPL package @kittentts/espeak-ng. The parity tests load
+// a built copy of it from KITTENTTS_ESPEAK_NG_DIR (its folder, after npm run build there)
+// and need KITTEN_TTS_2_TINY_DATA (tests/helpers/tiny-data.js); they skip without either.
+// The tests at the end, of what happens without the package, always run.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,14 +14,33 @@ const path = require('node:path');
 const data = require('./helpers/tiny-data');
 
 const fixtures = require('./fixtures/kitten-tts-2-tiny-espeak.json');
+const espeak = require('../lib/tiny/frontend/espeak/EspeakG2P');
+const { espeakDataFilesFor } = require('../lib/tiny/frontend/espeak/files');
 
-const runtime = path.join(__dirname, '..', 'lib', 'tiny', 'frontend', 'espeak', 'generated', 'espeakng-runtime.js');
-const skip = !fs.existsSync(runtime)
-  ? 'espeak-ng runtime missing in lib/: npm run build:espeak, then npm run build:test'
-  : data.textDataSkip('espeak-ng-data/phontab', 'manifest.json');
-
-const espeak = skip ? null : require('../lib/tiny/frontend/espeak/EspeakG2P');
+const REGISTRY = Symbol.for('@kittentts/espeak-ng');
+const packageDir = process.env.KITTENTTS_ESPEAK_NG_DIR;
+const packageEntry = packageDir && path.join(path.resolve(packageDir), 'lib', 'index.js');
+const skip = !packageEntry
+  ? 'set KITTENTTS_ESPEAK_NG_DIR to a built @kittentts/espeak-ng (docs/development.md)'
+  : !fs.existsSync(packageEntry)
+    ? `${packageEntry} missing: npm run build in @kittentts/espeak-ng`
+    : data.textDataSkip('espeak-ng-data/phontab', 'manifest.json');
+// Importing the package registers it, as an app's import '@kittentts/espeak-ng' does.
+const registration = skip ? null : require(packageEntry).default;
 const dataDir = skip ? null : path.join(data.textDir, 'espeak-ng-data');
+
+/** Run fn with the registry set to `value` (undefined: as if the package were not imported). */
+async function withRegistry(value, fn) {
+  const before = globalThis[REGISTRY];
+  if (value === undefined) delete globalThis[REGISTRY];
+  else globalThis[REGISTRY] = value;
+  try {
+    return await fn();
+  } finally {
+    if (before === undefined) delete globalThis[REGISTRY];
+    else globalThis[REGISTRY] = before;
+  }
+}
 
 function readFiles(names) {
   return Object.fromEntries(names.map(name => [name, data.readBytes(dataDir, name)]));
@@ -27,7 +48,7 @@ function readFiles(names) {
 
 function filesFor(langs) {
   const names = new Set();
-  for (const lang of langs) for (const f of espeak.espeakDataFilesFor(lang)) names.add(f);
+  for (const lang of langs) for (const f of espeakDataFilesFor(lang)) names.add(f);
   return readFiles([...names]);
 }
 
@@ -133,3 +154,41 @@ test('espeakDataFilesFor matches the text data manifest', { skip }, () => {
     assert.deepEqual(espeak.espeakDataFilesFor(lang), manifest.espeakLanguages[lang], lang);
   }
 });
+
+test('without @kittentts/espeak-ng, an espeak language says which package to install', async () => {
+  await withRegistry(undefined, async () => {
+    await assert.rejects(espeak.EspeakG2P.create({}, 'de'), (error) => {
+      assert.equal(error.code, 'MISSING_DEPENDENCY');
+      assert.match(error.message, /npm install @kittentts\/espeak-ng/);
+      assert.match(error.message, /"de"/);
+      return true;
+    });
+  });
+});
+
+test('a registered espeak-ng with another espeak-ng version is refused', async () => {
+  await withRegistry({ api: 1, espeakVersion: '1.51.0', createBackend: async () => ({}) }, async () => {
+    await assert.rejects(espeak.EspeakG2P.create({}, 'fr'), { code: 'MISSING_DEPENDENCY' });
+  });
+});
+
+test("misaki's and kittenml's steps run around the registered backend", async () => {
+  const calls = [];
+  const backend = {
+    version: '1.52.0',
+    addFiles() {},
+    // What phonemizer's backend returns for "Hallo" in German, ties and all.
+    phonemize(text, voice) { calls.push([text, voice]); return 'h\u02c8alo\u02d0 t^s '; },
+    dispose() { calls.push('dispose'); },
+  };
+  await withRegistry({ api: 1, espeakVersion: '1.52.0', createBackend: async () => backend }, async () => {
+    const files = Object.fromEntries(espeakDataFilesFor('de').map((f) => [f, new Uint8Array()]));
+    const g2p = await espeak.EspeakG2P.create(files, 'de');
+    // misaki: parentheses travel as angle quotes; e2m turns t^s into ʦ; the tie goes.
+    assert.equal(g2p.phonemizeLang('Hallo (du)', 'de', 'v1'), 'h\u02c8alo\u02d0 \u02a6');
+    assert.deepEqual(calls[0], ['Hallo \u00abdu\u00bb', 'gmw/de']);
+    g2p.dispose();
+    assert.equal(calls.at(-1), 'dispose');
+  });
+});
+

@@ -168,6 +168,8 @@ export class KittenTTS2Tiny {
   static async create(options: KittenTTS2TinyOptions, onProgress?: ProgressHandler): Promise<KittenTTS2Tiny> {
     const tts = await KittenTTS2Tiny.open(options);
     try {
+      // Before any download: a language that needs a package the app lacks fails at once.
+      for (const l of options.languages ?? [tts.defaultLanguage]) await tts.checkEngine(tts.resolveLanguage(l));
       const langs = await tts.download(options.languages, onProgress);
       await Promise.all(langs.map(l => tts.prepare(l)));
     } catch (error) {
@@ -480,8 +482,7 @@ export class KittenTTS2Tiny {
       const { JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
       textFiles = JAPANESE_DATA_FILES;
     } else {
-      // Imported here so apps that only speak English never load espeak-ng.
-      // The file list only: the espeak-ng runtime loads with the language.
+      // espeak-ng's data; espeak-ng itself comes from @kittentts/espeak-ng (checkEngine).
       const { espeakDataFilesFor } = await import('./frontend/espeak/files');
       textFiles = espeakDataFilesFor(lang).map(f => `espeak-ng-data/${f}`);
     }
@@ -492,9 +493,20 @@ export class KittenTTS2Tiny {
   }
 
   /** Download (if needed) and load one language. */
+  /**
+   * The languages other than English and Japanese go through espeak-ng, which is GPL-3.0 and
+   * comes in its own package (@kittentts/espeak-ng): fail clearly when the app lacks it.
+   */
+  private async checkEngine(lang: string): Promise<void> {
+    if (lang === 'en' || lang === 'ja') return;
+    const { requireEspeakNg } = await import('./frontend/espeak/EspeakG2P');
+    requireEspeakNg(lang);
+  }
+
   private prepare(lang: string): Promise<void> {
     return memo(this.prepared, lang, async () => {
       this.ensureOpen();
+      await this.checkEngine(lang);
       await this.platform.store.ensure(await this.filesFor(lang));
       await Promise.all([
         this.synth.prepare(this.graphFile(lang)),
@@ -539,7 +551,7 @@ export class KittenTTS2Tiny {
       return out;
     };
     if (!this.espeak) {
-      const created = read(espeakDataFilesFor(lang)).then(files => EspeakG2P.create(files));
+      const created = read(espeakDataFilesFor(lang)).then(files => EspeakG2P.create(files, lang));
       this.espeak = created;
       created.catch(() => { if (this.espeak === created) this.espeak = null; });
     }
