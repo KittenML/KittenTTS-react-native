@@ -26,7 +26,7 @@ committed. After the first build, `npm run build:ts` is enough until the C++ cha
 ## Licence
 
 The package is Apache-2.0. Do not add code that is only available under the GPL or
-LGPL. espeak-ng lives in its own package, `@kittentts/espeak-ng`, which the SDK finds
+LGPL. espeak-ng lives in its own package, [`@kittentts/espeak-ng`](https://github.com/dewana-sl/kittentts-espeak-ng), which the SDK finds
 at run time and never imports.
 
 ## Trying Changes in the Examples

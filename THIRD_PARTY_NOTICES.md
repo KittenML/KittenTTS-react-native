@@ -25,7 +25,7 @@ Kitten TTS 2 Nano, Pico and Mini and the 0.8 models. None of it is GPL:
 Kitten TTS 2 Nano, Pico and Mini speak the languages other than English and
 Japanese (de, fr, es, it, pt, ru, hi, and Mini's da, fi, nl, sv, sw, tr, ko)
 through espeak-ng. It is GPL-3.0-or-later, so it comes in a separate package
-from its own repository, which an app installs and imports once
+from [its own repository](https://github.com/dewana-sl/kittentts-espeak-ng), which an app installs and imports once
 (`import '@kittentts/espeak-ng';`). This package never imports it.
 
 | What | Licence |

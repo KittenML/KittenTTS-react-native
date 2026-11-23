@@ -100,7 +100,7 @@ Python package:
 | Mini only | `da` `fi` `nl` `sv` `sw` `tr` `ko` |
 
 espeak-ng is GPL-3.0-or-later, so it is not in this package. It comes in
-`@kittentts/espeak-ng`, which an app installs and imports once:
+[`@kittentts/espeak-ng`](https://github.com/dewana-sl/kittentts-espeak-ng), which an app installs and imports once:
 
 ```bash
 npm install @kittentts/espeak-ng

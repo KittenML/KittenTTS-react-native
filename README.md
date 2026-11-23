@@ -383,7 +383,7 @@ Runtime dependencies installed by the SDK:
 
 Optional:
 
-- `@kittentts/espeak-ng`, for the Kitten TTS 2 languages other than English and
+- [`@kittentts/espeak-ng`](https://github.com/dewana-sl/kittentts-espeak-ng), for the Kitten TTS 2 languages other than English and
   Japanese.
 - Audio playback: `expo-audio`, `react-native-sound`, or a custom player.
 
@@ -416,7 +416,7 @@ Apache 2.0. See [LICENSE](./LICENSE). The package contains no GPL code.
 
 espeak-ng, which Kitten TTS 2 Nano, Pico and Mini use for the languages other
 than English and Japanese, is GPL-3.0-or-later, so it lives in the separate
-`@kittentts/espeak-ng` package, the way the Python package gets it from
+[`@kittentts/espeak-ng`](https://github.com/dewana-sl/kittentts-espeak-ng) package, the way the Python package gets it from
 `espeakng_loader` and `phonemizer`. An app that installs and imports it ships
 GPL-3.0-or-later code; an app that only uses English, Japanese, the 0.8 models or
 the cloud ships none. Some data downloaded at run time has its own licences. See

@@ -112,9 +112,10 @@ from `KITTEN_TTS_2_TINY_MODEL_DIR`, a folder holding `kitten-tts-2-nano/`,
 The parity tests of the espeak languages load a built `@kittentts/espeak-ng`
 from `KITTENTTS_ESPEAK_NG_DIR`: its folder, after `npm run build` there. Without
 it they skip; the tests of what happens when the package is missing always run.
-With a checkout of `@kittentts/espeak-ng` next to this one:
+With a checkout of [`@kittentts/espeak-ng`](https://github.com/dewana-sl/kittentts-espeak-ng) next to this one:
 
 ```bash
+git clone https://github.com/dewana-sl/kittentts-espeak-ng.git ../kittentts-espeak-ng
 python -I tools/kitten-tts-2-tiny/build_text_pack.py ~/kitten-tts-2-text
 (cd ../kittentts-espeak-ng && npm install && npm run build)
 npm run build

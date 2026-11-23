@@ -27,7 +27,7 @@ The 0.8 flow:
 
 The package is Apache-2.0 only. Do not add code that is only available under the
 GPL or LGPL, or code ported from such code, to this repository. espeak-ng and phonemizer's espeak backend (GPL-3.0-or-later)
-live in the separate `@kittentts/espeak-ng` package (its own repository). Apps
+live in the separate `@kittentts/espeak-ng` package (its own repository, https://github.com/dewana-sl/kittentts-espeak-ng). Apps
 import it once; it registers itself under `Symbol.for('@kittentts/espeak-ng')`,
 and `src/tiny/frontend/espeak/EspeakG2P.ts` looks it up there. Never import it
 from `src/`: the SDK must not depend on it, so apps that only use English,
