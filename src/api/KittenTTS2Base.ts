@@ -12,14 +12,17 @@ import { PCM16Decoder, QuietSplitter, decodePCM16 } from './pcm';
 
 /** Kitten TTS 2 audio is 24 kHz mono. */
 const SAMPLE_RATE = 24_000;
-// The API's ID for the newest Kitten TTS 2; 'kitten-tts-2' is this SDK's name for it.
+// The API's ID for the newest Kitten TTS 2 Cloud. This SDK also calls it 'kitten-tts-2'
+// (the Python package's name) and 'kitten-tts-2-cloud' (KittenML's name for it).
 const LATEST_MODEL = 'kitten-tts-2-latest';
+const ALIASES: Record<string, string> = { 'kitten-tts-2': LATEST_MODEL, 'kitten-tts-2-cloud': LATEST_MODEL };
 // Saved voices travel as {"id": ...}; the API refuses a bare saved-voice ID.
 const SAVED_VOICE_PREFIX = 'voice_';
 
 /**
- * `'kitten-tts-2'` for the newest Kitten TTS 2, or a Kitten TTS 2 model ID the
- * API lists, such as `'kitten-tts-2-latest'`.
+ * `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`) for the newest Kitten TTS 2 Cloud,
+ * `'kitten-tts-2-nano'`, `'-pico'` or `'-mini'`, or another model ID the API lists,
+ * such as `'kitten-tts-2-latest'`.
  */
 export type KittenTTS2Model = `kitten-tts-2${string}`;
 
@@ -124,9 +127,9 @@ interface Call {
 }
 
 /**
- * Kitten TTS 2 through the Kitten API. The same calls as an on-device
- * `KittenTTS`, plus voice cloning, presets and the decoding controls.
- * Created with `KittenTTS.create({ model: 'kitten-tts-2', apiKey })`.
+ * Kitten TTS 2 Cloud (and Nano, Pico and Mini) through the Kitten API. The same
+ * calls as an on-device `KittenTTS`, plus voice cloning, presets and the decoding
+ * controls. Created with `KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey })`.
  */
 export class KittenTTS2Base {
   /** The model ID requests are sent with, such as `'kitten-tts-2-latest'`. */
@@ -163,11 +166,11 @@ export class KittenTTS2Base {
     platform: KittenTTS2Platform,
   ): Promise<KittenTTS2State> {
     if (!isKittenTTS2Model(options?.model)) {
-      throw KittenTTSError.invalidArgument("model must be 'kitten-tts-2' or another Kitten TTS 2 model ID.");
+      throw KittenTTSError.invalidArgument("model must be 'kitten-tts-2-cloud' or another Kitten TTS 2 model ID.");
     }
     if (options.defaultVoice !== undefined) checkVoice(options.defaultVoice, 'defaultVoice');
     const api = new KittenAPI(options);
-    const model = options.model === 'kitten-tts-2' ? LATEST_MODEL : options.model;
+    const model = ALIASES[options.model] ?? options.model;
     return {
       api,
       model,

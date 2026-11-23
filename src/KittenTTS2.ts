@@ -3,7 +3,7 @@ import { AudioOutput, type AudioPlayer } from './audio/AudioOutput';
 import { base64ToUint8Array } from './audio/Base64';
 import { KittenTTS2Base, type KittenTTS2Options } from './api/KittenTTS2Base';
 
-/** Options for `KittenTTS.create({ model: 'kitten-tts-2', ... })`. */
+/** Options for `KittenTTS.create({ model: 'kitten-tts-2-cloud', ... })`. */
 export interface KittenTTS2CreateOptions extends KittenTTS2Options {
   /**
    * Audio player for `speak()` and `play()`. Use {@link createExpoAudioPlayer}
@@ -13,7 +13,7 @@ export interface KittenTTS2CreateOptions extends KittenTTS2Options {
 }
 
 /**
- * Kitten TTS 2 through the Kitten API: the model runs on KittenML's servers,
+ * Kitten TTS 2 Cloud through the Kitten API: the model runs on KittenML's servers,
  * so nothing is downloaded to the device, and the text you pass is sent to
  * the API. It has the same calls as an on-device `KittenTTS`, plus voice
  * cloning, presets and the decoding controls.
@@ -24,7 +24,7 @@ export interface KittenTTS2CreateOptions extends KittenTTS2Options {
  * import { KittenTTS, createExpoAudioPlayer } from '@kittentts/react-native';
  *
  * const tts = await KittenTTS.create({
- *   model: 'kitten-tts-2',
+ *   model: 'kitten-tts-2-cloud',
  *   apiKey: KITTENML_API_KEY,
  *   player: createExpoAudioPlayer(ExpoAudio),
  * });

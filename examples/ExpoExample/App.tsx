@@ -27,8 +27,8 @@ import {
 } from '@kittentts/react-native';
 
 // Three engines behind one KittenTTS.create(): the 0.8 models and Kitten TTS 2 Nano,
-// Pico and Mini run on the device; Kitten TTS 2 (and Nano, Pico and Mini too, with
-// a key) run on the Kitten API.
+// Pico and Mini run on the device; Kitten TTS 2 Cloud (and Nano, Pico and Mini too,
+// with a key) run on the Kitten API.
 type Engine = 'onnx' | 'tiny' | 'cloud';
 type AnyTTS = KittenTTS | KittenTTS2Tiny | KittenTTS2;
 
@@ -47,7 +47,7 @@ const MODELS: Record<Engine, { id: string; label: string }[]> = {
     { id: 'kitten-tts-2-mini', label: 'Mini' },
   ],
   cloud: [
-    { id: 'kitten-tts-2', label: 'Kitten TTS 2' },
+    { id: 'kitten-tts-2-cloud', label: 'Kitten TTS 2 Cloud' },
     { id: 'kitten-tts-2-mini', label: 'Mini' },
     { id: 'kitten-tts-2-nano', label: 'Nano' },
     { id: 'kitten-tts-2-pico', label: 'Pico' },
@@ -150,7 +150,7 @@ function Demo() {
         : nextEngine === 'tiny'
           ? await KittenTTS.create({ model: nextModel as 'kitten-tts-2-nano', player }, onProgress)
           : await KittenTTS.create({
-            model: nextModel as 'kitten-tts-2',
+            model: nextModel as 'kitten-tts-2-cloud',
             ...(ENV_BASE_URL ? { baseUrl: ENV_BASE_URL } : { apiKey: key }),
             player,
           });
