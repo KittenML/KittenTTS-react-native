@@ -15,10 +15,15 @@ const { bundleAssets, parseArgs } = require('../bin/kittentts-react-native');
 const { KittenTTS2Tiny, DEFAULT_TEXT_DATA_URL } = require('../lib/tiny/KittenTTS2Tiny');
 const { readOnlyStore } = require('../lib/tiny/assets');
 const { copyBundledFiles } = require('../lib/tiny/bundled');
-const web = require('../lib/KittenTTSBundledAssets.web');
+// The web helpers load the 0.8 phonemizer runtime, which a fresh clone does not have
+// until `npm run build:phonemizer` (Emscripten) has run.
+const webSkip = fs.existsSync(path.join(__dirname, '../lib/phonemizer/generated/cephonemizer-runtime.js'))
+  ? false
+  : 'cephonemizer runtime missing in lib/: npm run build:phonemizer, then npm run build:test';
+const web = webSkip ? null : require('../lib/KittenTTSBundledAssets.web');
 const { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES } = require('../lib/tiny/frontend/english/load');
 const { JAPANESE_DATA_FILES } = require('../lib/tiny/frontend/japanese/JapaneseG2P');
-const { espeakDataFilesFor } = require('../lib/tiny/frontend/espeak/EspeakG2P');
+const { espeakDataFilesFor } = require('../lib/tiny/frontend/espeak/files');
 const data = require('./helpers/tiny-data');
 
 const HF = 'https://huggingface.co';
@@ -300,7 +305,7 @@ test('several models: languages per model, shared text data, Mini\'s one graph o
   await assert.rejects(runCLI(['--models', 'kitten-tts-2-nano', '--languages', 'en,xx', '--out', out]), /speaks xx/);
 });
 
-test('0.8 and Kitten TTS 2 in one bundle: version 3 that the 0.8 readers still accept', async () => {
+test('0.8 and Kitten TTS 2 in one bundle: version 3 that the 0.8 readers still accept', { skip: webSkip }, async () => {
   const out = tempDir();
   await runCLI(['--models', 'nano-int8,kitten-tts-2-nano', '--default-model', 'kitten-tts-2-nano', '--languages', 'de', '--out', out]);
   const manifest = readManifest(out);
@@ -417,7 +422,7 @@ const realSkip = data.textDataSkip('manifest.json', ...ENGLISH_TEXT_FILES)
   || (nanoDir ? false : 'kitten-tts-2-nano is not in the Hugging Face cache (or KITTEN_TTS_2_TINY_MODEL_DIR)')
   || (nanoDir && !fs.existsSync(path.join(nanoDir, 'kitten_tts_2_nano_de.onnx')) ? 'the cached kitten-tts-2-nano has no German graph' : false);
 
-test('the real Nano int8 en+de bundle loads and speaks with no download', { skip: realSkip, timeout: 300_000 }, async () => {
+test('the real Nano int8 en+de bundle loads and speaks with no download', { skip: realSkip || webSkip, timeout: 300_000 }, async () => {
   // Hugging Face served from the local copies.
   const served = {
     get(url) {

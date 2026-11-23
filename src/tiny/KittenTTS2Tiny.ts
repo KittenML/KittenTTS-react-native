@@ -481,7 +481,8 @@ export class KittenTTS2Tiny {
       textFiles = JAPANESE_DATA_FILES;
     } else {
       // Imported here so apps that only speak English never load espeak-ng.
-      const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
+      // The file list only: the espeak-ng runtime loads with the language.
+      const { espeakDataFilesFor } = await import('./frontend/espeak/files');
       textFiles = espeakDataFilesFor(lang).map(f => `espeak-ng-data/${f}`);
     }
     return [
