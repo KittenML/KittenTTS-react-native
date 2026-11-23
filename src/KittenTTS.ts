@@ -311,7 +311,8 @@ export class KittenTTS {
    * playback starts.
    */
   async play(
-    result: KittenTTSResult,
+    // Any result plays, from any model: only its samples are used.
+    result: KittenTTSResult<string>,
     options: AudioPlayOptions = {},
   ): Promise<void> {
     if (this.disposed) throw KittenTTSError.engineNotReady();
