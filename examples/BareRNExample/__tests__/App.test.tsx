@@ -8,7 +8,7 @@ import {it, jest} from '@jest/globals';
 
 // The SDK and the player are native modules; the test checks the screen renders.
 jest.mock('react-native-sound', () => ({}));
-jest.mock('@kittentts/espeak-ng', () => ({}));
+jest.mock('@kittentts/espeak-ng', () => ({}), {virtual: true});
 jest.mock('@kittentts/react-native', () => ({
   ALL_VOICES: ['Bella'],
   KittenModel: {Nano: 'nano', NanoInt8: 'nano-int8', Micro: 'micro', Mini: 'mini'},
