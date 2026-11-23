@@ -38,6 +38,30 @@ Create a key in the
 it takes one request before it resolves, and it fails right away if the key is
 wrong.
 
+## Nano, Pico And Mini On The API
+
+Kitten TTS 2 Nano, Pico and Mini also run on the API. With an `apiKey` or a
+`baseUrl` the same model names go there instead of loading on the device:
+
+```tsx
+// On the device: downloads the model, works offline afterwards.
+const local = await KittenTTS.create({ model: 'kitten-tts-2-nano' });
+
+// On the API: nothing to download, the model's own voices.
+const cloud = await KittenTTS.create({ model: 'kitten-tts-2-nano', apiKey: KITTENML_API_KEY });
+await cloud.speak('Guten Morgen!', 'anna_de');
+```
+
+Each model has its own voices (Nano 37, Pico 30, Mini 118 in 16 languages), and
+the voice decides the language. They take `voice` and `speed`; cloning, presets
+and the decoding controls belong to the big model only.
+
+| `model` | Without a key | With `apiKey` or `baseUrl` |
+| --- | --- | --- |
+| `'kitten-tts-2'` | Error: needs the API | `KittenTTS2`, the big model |
+| `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'` | `KittenTTS2Tiny` on the device ([guide](kitten-tts-2-tiny.md)) | `KittenTTS2` on the API |
+| 0.8 models (default) | `KittenTTS` on the device | `KittenTTS` on the device |
+
 ## Keep Your Key Off The Device
 
 Anyone who downloads an app can extract a key compiled into it. Use `apiKey`

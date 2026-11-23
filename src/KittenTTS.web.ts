@@ -11,11 +11,10 @@ import {
 } from './KittenTTSError';
 import { KittenTTSResult } from './KittenTTSResult';
 import { KittenTTS2, type KittenTTS2CreateOptions } from './KittenTTS2.web';
-import { isKittenTTS2Model } from './api/KittenTTS2Base';
+import { engineFor } from './engineFor';
 import { speedPrior } from './KittenModel';
 import { KittenTTS2Tiny } from './tiny/KittenTTS2Tiny';
 import type { KittenTTS2TinyOptions } from './tiny/KittenTTS2Tiny';
-import { isTinyModel } from './tiny/TinyRepo';
 import { KittenVoice } from './KittenVoice';
 import type { KittenWordTiming } from './KittenWordTiming';
 import { TTSEngine } from './engine/TTSEngine.web';
@@ -139,20 +138,17 @@ export class KittenTTS {
     createOptions?: KittenTTSCreateOptions | KittenTTS2TinyOptions | KittenTTS2CreateOptions,
     onProgress?: ProgressHandler,
   ): Promise<KittenTTS | KittenTTS2Tiny | KittenTTS2> {
-    const options: { model?: unknown; apiKey?: unknown; baseUrl?: unknown } = createOptions ?? {};
-    const cloud = options.apiKey !== undefined || options.baseUrl !== undefined;
-    // Kitten TTS 2 Nano, Pico and Mini on the device, like the Python package's
-    // KittenTTS("KittenML/kitten-tts-2-nano").
-    if (isTinyModel(options.model) && !cloud) {
-      return KittenTTS2Tiny.create(createOptions as KittenTTS2TinyOptions, onProgress);
+    switch (engineFor(createOptions)) {
+      case 'tiny':
+        return KittenTTS2Tiny.create(createOptions as KittenTTS2TinyOptions, onProgress);
+      case 'api': {
+        const tts = await KittenTTS2.create(createOptions as KittenTTS2CreateOptions);
+        onProgress?.(1, { stage: 'complete' });
+        return tts;
+      }
+      default:
+        return KittenTTS.createOnDevice(createOptions as KittenTTSCreateOptions | undefined, onProgress);
     }
-    // Kitten TTS 2 models through the Kitten API (the big model runs only there).
-    if (isKittenTTS2Model(options.model)) {
-      const tts = await KittenTTS2.create(createOptions as KittenTTS2CreateOptions);
-      onProgress?.(1, { stage: 'complete' });
-      return tts;
-    }
-    return KittenTTS.createOnDevice(createOptions as KittenTTSCreateOptions | undefined, onProgress);
   }
 
   private static async createOnDevice(

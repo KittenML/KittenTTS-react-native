@@ -92,3 +92,16 @@ test('API errors arrive with their code', live, async () => {
     return true;
   });
 });
+
+test('Kitten TTS 2 Nano, Pico and Mini run on the API with their own voices', live, async () => {
+  for (const model of ['kitten-tts-2-nano', 'kitten-tts-2-pico', 'kitten-tts-2-mini']) {
+    const small = await NodeKittenTTS2.create({ model, apiKey, baseUrl: process.env.KITTENML_API_BASE_URL });
+    const builtIn = small.voices.filter(voice => voice.type === 'public');
+    assert.ok(builtIn.length >= 20, `${model}: ${builtIn.length} voices`);
+    const german = builtIn.find(voice => voice.language === 'de');
+    assert.ok(german, `${model} has a German voice`);
+    const result = await small.generate('Guten Morgen, wie geht es dir heute?', { voice: german.id, speed: 1.1 });
+    assert.ok(result.duration > 1 && peak(result.samples) > 0.05, `${model}: ${result.duration} s`);
+    await small.dispose();
+  }
+});

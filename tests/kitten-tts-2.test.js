@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const util = require('node:util');
 
 const { KittenTTS2Base, isKittenTTS2Model } = require('../lib/api/KittenTTS2Base');
+const { engineFor } = require('../lib/engineFor');
 const { PCM16Decoder, QuietSplitter, decodePCM16 } = require('../lib/api/pcm');
 const { KittenAPIError, KittenTTSError, isKittenAPIError, isKittenTTSError } = require('../lib/KittenTTSError');
 const { KittenTTSResult } = require('../lib/KittenTTSResult');
@@ -196,6 +197,19 @@ test('isKittenTTS2Model picks out Kitten TTS 2 and nothing else', () => {
   for (const model of [undefined, '', 'kitten-tts-nano-0.8', 'kitten-tts-nano-0.8-int8', 'kitten-tts-20', 'KittenML/kitten-tts-2']) {
     assert.ok(!isKittenTTS2Model(model), String(model));
   }
+});
+
+test('KittenTTS.create() picks the engine from the model, like the Python package', () => {
+  assert.equal(engineFor(undefined), 'onnx');
+  assert.equal(engineFor({ model: 'kitten-tts-nano-0.8-int8' }), 'onnx');
+  for (const model of ['kitten-tts-2-nano', 'kitten-tts-2-pico', 'kitten-tts-2-mini', 'KittenML/kitten-tts-2-nano']) {
+    assert.equal(engineFor({ model }), 'tiny', model);
+    assert.equal(engineFor({ model, apiKey: KEY }), 'api', `${model} with a key`);
+    assert.equal(engineFor({ model, baseUrl: 'https://example.com/v1' }), 'api', `${model} with a backend`);
+  }
+  // The big model runs only on the API; without a key create() says so.
+  assert.equal(engineFor({ model: 'kitten-tts-2' }), 'api');
+  assert.equal(engineFor({ model: 'kitten-tts-2-latest', apiKey: KEY }), 'api');
 });
 
 test('create() lists the voices once, with the key as a bearer token', async () => {
