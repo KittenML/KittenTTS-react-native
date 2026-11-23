@@ -20,6 +20,10 @@ Main flow:
 
 - `src/index.ts`: public exports.
 - `src/KittenTTS.ts`: main SDK class and lifecycle.
+- `src/engineFor.ts`: which engine `KittenTTS.create()` builds from the model, as
+  the Python package does: 0.8 on the device, Kitten TTS 2 Nano/Pico/Mini on the
+  device (`src/tiny/`), or the Kitten API (`src/api/`, `src/KittenTTS2.ts`) for
+  `kitten-tts-2` and for any Kitten TTS 2 model given an `apiKey` or `baseUrl`.
 - `src/KittenTTSConfig.ts`: user config and defaults.
 - `src/*.web.ts`: React Native Web entrypoints and platform-specific browser implementations.
   Each one needs an entry in `package.json` under `browser` (native file to web
@@ -49,9 +53,22 @@ Main flow:
 - `scripts/build-espeak-ng.js`: builds the espeak-ng runtime for Kitten TTS 2
   (`vendor/espeak-ng-bridge/`).
 - `scripts/patch-onnxruntime-react-native.js`: postinstall ONNX Runtime compatibility patches.
-- `examples/BareRNExample/`: bare React Native example.
-- `examples/ExpoExample/`: Expo development-build example.
-- `examples/ExpoWordTimingsExample/`: Expo SDK 55 word timing example.
+- `examples/BareRNExample/`: bare React Native (0.81) example, the same app as
+  ExpoExample. Its `App.tsx` is ExpoExample's with react-native-sound instead of
+  expo-audio; keep the two in step. It lists `onnxruntime-react-native` itself
+  (React Native CLI links only direct dependencies on iOS) and turns its Android
+  linking off in `react-native.config.js`; its iOS app uses a `SceneDelegate`
+  (the iOS 27 SDK requires the scene lifecycle).
+- `examples/ExpoExample/`: Expo SDK 58 example with every engine: 0.8, Kitten TTS
+  2 Nano/Pico/Mini on the device, Kitten TTS 2 in the cloud (key from the app or
+  `EXPO_PUBLIC_KITTENML_API_KEY`, or `EXPO_PUBLIC_KITTENML_BASE_URL`); iOS,
+  Android and web.
+- `examples/ExpoWordTimingsExample/`: Expo SDK 58 word timing example (0.8 and
+  Kitten TTS 2 on the device).
+- `examples/OfflineBundledAssetsExample/`: Expo SDK 58, models bundled into the
+  app (0.8 and Kitten TTS 2 Nano).
+- The examples depend on the published SDK version and have no lockfiles;
+  `npm run example:install -- <example>` installs this checkout into one.
 
 ## Build And Validation
 
@@ -83,8 +100,9 @@ prefer editing `src/` and rebuilding.
 - `react-native-fs` stays below 2.41.0: 2.41 needs React Native 0.88 (its codegen
   spec uses `ArrayBuffer`), so newer versions break `pod install` on older apps.
 - `onnxruntime-react-native` 1.24 casts to `RCTCxxBridge`, which React Native
-  0.88 removed; the postinstall patch replaces that cast. Check both Expo SDK 55
-  and the newest SDK build after changing either dependency.
+  0.88 removed; the postinstall patch replaces that cast. Check an older React
+  Native (the bare example's 0.81) and the newest Expo SDK after changing either
+  dependency.
 - Playback is optional. Users must pass either `createExpoAudioPlayer()` with
   `expo-audio`, `createRNSoundPlayer()` with `react-native-sound`, or their own
   `AudioPlayer`.

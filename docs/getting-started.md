@@ -7,7 +7,7 @@ instance, and generate speech.
 
 | Requirement | Version |
 | --- | --- |
-| React Native | `>= 0.72` |
+| React Native | `>= 0.72` (`>= 0.75` for Kitten TTS 2 Nano, Pico and Mini) |
 | iOS | `15.1+` |
 | Android | API `24+` |
 | Web | modern browser with WebAssembly support |
@@ -28,8 +28,8 @@ modules at runtime.
 npm install @kittentts/react-native
 ```
 
-Do not install or register `onnxruntime-react-native` manually. The SDK depends
-on it and registers the Android package it needs.
+In an Expo app that is all: Expo links the SDK's native dependencies. A bare
+React Native app needs one more step for iOS, below.
 
 ## Expo Development Build
 
@@ -53,12 +53,28 @@ npx expo start --dev-client
 
 ## Bare React Native
 
-For playback with `speak()`, install a player:
+React Native CLI links only the app's own dependencies on iOS, so add ONNX
+Runtime and the file system module to the app, and keep the CLI from linking ONNX
+Runtime on Android, where the SDK registers it itself. For playback with
+`speak()`, install a player too:
 
 ```bash
-npm install react-native-sound
+npm install onnxruntime-react-native "react-native-fs@npm:@dr.pogodin/react-native-fs@>=2.38.2 <2.41.0" react-native-sound
 cd ios && pod install && cd ..
 ```
+
+```js
+// react-native.config.js
+module.exports = {
+  dependencies: {
+    'onnxruntime-react-native': { platforms: { android: null } },
+  },
+};
+```
+
+Without them, iOS fails at the first `create()` because the ONNX Runtime module
+is missing. `react-native-fs` 2.41 needs React Native 0.88; keep the range above
+on older apps.
 
 ## Web
 

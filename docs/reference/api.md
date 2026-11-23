@@ -38,6 +38,20 @@ it returns a `KittenTTS2Tiny` instead: see
 methods (`generate(text, { voice, language, speed })`, `generateStreaming`,
 `generateToFile`, `phonemize`, `voices`, `availableVoices`, `onnxWeights`).
 
+With `model: 'kitten-tts-2'`, or any Kitten TTS 2 model and an `apiKey` or
+`baseUrl`, it returns a `KittenTTS2`, which runs on the Kitten API: see the
+[Kitten API guide](../guides/kitten-api.md). The model picks the engine, as in the
+Python package:
+
+| `model` | Without a key | With `apiKey` or `baseUrl` |
+| --- | --- | --- |
+| 0.8 models (default) | `KittenTTS`, on the device | `KittenTTS`, on the device |
+| `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'` | `KittenTTS2Tiny`, on the device | `KittenTTS2`, on the API |
+| `'kitten-tts-2'` | error: it runs on the API only | `KittenTTS2`, on the API |
+
+All three have `generate()`, `generateStreaming()`, `speak()`, `play()`,
+`stopSpeaking()` and `dispose()`.
+
 ## Common Options
 
 | Option | Default | Description |
@@ -186,6 +200,18 @@ as normal filesystem paths.
 ```tsx
 const config = await createBundledAssetConfig(manifest, {
   model: KittenModel.NanoInt8,
+});
+```
+
+For bundled Kitten TTS 2 Nano, Pico or Mini, `createBundledTinyOptions(manifest,
+{ model })` returns the `KittenTTS.create()` options (`model`, `weights`,
+`languages`, `modelDirectory`, `textDataDirectory`), and `bundledTinyModels(manifest)`
+lists them:
+
+```tsx
+const tts = await KittenTTS.create({
+  ...(await createBundledTinyOptions(manifest, { model: 'kitten-tts-2-nano' })),
+  player,
 });
 ```
 

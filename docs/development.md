@@ -135,7 +135,16 @@ npm pack
 ```
 
 The tarball is ignored by Git. The examples install
-`@kittentts/react-native` from npm, not from a local tarball.
+`@kittentts/react-native` from npm. To run one against this checkout instead (a
+change to try, or a version not on npm yet):
+
+```bash
+npm run example:install -- ExpoExample
+```
+
+It builds `lib/`, packs it and installs the tarball into the example with
+`npm install --no-save`, so the example's `package.json` keeps the published
+version.
 
 If npm cache permissions fail locally:
 

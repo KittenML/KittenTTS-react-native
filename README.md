@@ -63,8 +63,10 @@ KittenTTS React Native lets you add local speech synthesis to a mobile app:
   the native app.
 - **App-friendly output** - play audio directly, save WAV data, or use generated
   word timings for read-aloud UI.
-- **Kitten TTS 2 when you want it** - the larger model, with voice cloning and
-  expression tags, through the Kitten API with the same calls.
+- **Three engines, one API** - the 0.8 models and the multilingual Kitten TTS 2
+  Nano, Pico and Mini on the device, and the larger Kitten TTS 2 (voice cloning,
+  expression tags) through the Kitten API. `KittenTTS.create()` picks the engine
+  from the model name, as the Python package does.
 
 With the on-device models: no cloud, no API key, no text leaving the device for
 speech generation.
@@ -176,7 +178,8 @@ for await (const chunk of tts.generateStreaming(longText, 'bella_en')) {
 ```
 
 `tts.availableVoices` lists the voice IDs. The text you pass is sent to the API
-and billed to your KittenML account.
+and billed to your KittenML account. With an `apiKey` (or `baseUrl`), Nano, Pico
+and Mini run on the API too: `KittenTTS.create({ model: 'kitten-tts-2-nano', apiKey })`.
 
 [Kitten API guide →](docs/guides/kitten-api.md)
 
@@ -213,16 +216,26 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 
 ## Sample Apps
 
-- [`examples/BareRNExample`](examples/BareRNExample) - bare React Native setup.
-- [`examples/ExpoExample`](examples/ExpoExample) - Expo development build setup.
-- [`examples/ExpoWordTimingsExample`](examples/ExpoWordTimingsExample) - word highlighting with generated timings.
-- [`examples/OfflineBundledAssetsExample`](examples/OfflineBundledAssetsExample) - shipping models and phonemizer files inside the app.
+- [`examples/ExpoExample`](examples/ExpoExample) - Expo (SDK 58) app with every
+  engine: the 0.8 models, Kitten TTS 2 Nano, Pico and Mini on the device, and the
+  Kitten TTS 2 models in the cloud. Runs on iOS, Android and the web.
+- [`examples/BareRNExample`](examples/BareRNExample) - the same app in a bare
+  React Native (0.81) project.
+- [`examples/ExpoWordTimingsExample`](examples/ExpoWordTimingsExample) - word
+  highlighting with generated timings, with 0.8 or Kitten TTS 2 models.
+- [`examples/OfflineBundledAssetsExample`](examples/OfflineBundledAssetsExample) -
+  shipping the model files inside the app.
+
+To run an example against this checkout of the SDK (or before a new version is on
+npm), install it with `npm run example:install -- ExpoExample` from the
+repository root.
 
 ---
 
 ## Features
 
 - [On-device TTS inference](docs/getting-started.md) on iOS, Android, and web.
+- [Kitten TTS 2 Nano, Pico and Mini](docs/guides/kitten-tts-2-tiny.md) on device, in 8 languages (Mini 16), with the Python package's phonemes.
 - [Model download and cache](docs/reference/api.md#cache-methods) with progress callbacks.
 - [Bundled offline assets](docs/guides/offline-assets.md) for apps that cannot depend on a first-run download.
 - [Expo development builds](docs/getting-started.md#expo-development-build); Expo Go is [not supported](docs/troubleshooting.md#expo-go-fails).
@@ -230,7 +243,7 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 - [WAV output](docs/reference/api.md#kittenttsresult) as raw PCM samples, bytes, or base64.
 - [Word timings](docs/guides/word-timings.md) for read-aloud highlighting.
 - [Streaming generation](docs/reference/api.md#ttsgeneratestreamingtext-voice-speed) for longer text.
-- [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md), with voice cloning.
+- [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md), with voice cloning, and Nano, Pico and Mini in the cloud.
 
 ---
 
@@ -299,7 +312,7 @@ Tutorials:
 
 ## System Requirements
 
-- React Native `>= 0.72`
+- React Native `>= 0.72` (`>= 0.75` for Kitten TTS 2 Nano, Pico and Mini)
 - iOS `15.1+`
 - Android API `24+`
 - Node.js `20+` recommended for examples

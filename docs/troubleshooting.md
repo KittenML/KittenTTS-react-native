@@ -75,6 +75,23 @@ On Android, the SDK's own `android/` package registers ONNX Runtime. This avoids
 the common `Cannot read property 'install' of null` crash when ONNX Runtime is
 compiled but not added to `MainApplication`.
 
+In a bare React Native app, iOS needs `onnxruntime-react-native` in the app's own
+`package.json`, because React Native CLI links only direct dependencies. Without
+it `create()` fails on iOS because the ONNX Runtime module is missing; see
+[Bare React Native](getting-started.md#bare-react-native). Expo links it on its
+own.
+
+## The App Closes At Launch On iOS 27
+
+Apps built with the iOS 27 SDK (Xcode 27) must use the scene lifecycle, or iOS
+stops them at launch (`UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`
+in the crash report). This is not about KittenTTS, but older templates hit it:
+Expo SDK 54 and 55 and React Native 0.81's `RCTAppDelegate`. Move to Expo SDK
+58, or create the window in a `SceneDelegate` and add
+`UIApplicationSceneManifest` to `Info.plist`, as
+[`examples/BareRNExample`](../examples/BareRNExample/ios/BasicExample/AppDelegate.mm)
+does.
+
 ## Bundled Assets Are Missing In The App
 
 If you use bundled assets, remember that `assets/kittentts` is copied during the
