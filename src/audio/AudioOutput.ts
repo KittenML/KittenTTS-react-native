@@ -257,7 +257,9 @@ export function createExpoAudioPlayer(Audio: ExpoAudioModule): AudioPlayer {
  * ```
  */
 export function createRNSoundPlayer(Sound: RNSoundConstructor): AudioPlayer {
-  let currentSound: RNSoundInstance | null = null;
+  // The clip loading or playing now. stop() ends its playFile() call too: on iOS,
+  // stopping a Sound never calls its play() callback.
+  let current: { sound: RNSoundInstance | null; done: () => void } | null = null;
 
   // Required on iOS
   if (Platform.OS === 'ios' && Sound.setCategory) {
@@ -270,15 +272,23 @@ export function createRNSoundPlayer(Sound: RNSoundConstructor): AudioPlayer {
       onPlaybackStart?: () => void,
     ): Promise<void> {
       return new Promise<void>((resolve, reject) => {
+        const entry: { sound: RNSoundInstance | null; done: () => void } = { sound: null, done: resolve };
+        current = entry;
         const sound = new Sound(filePath, '', (error: Error | null) => {
+          if (current !== entry) {
+            sound.release(); // stopped while it loaded
+            return;
+          }
           if (error) {
+            current = null;
             reject(KittenTTSError.playbackFailed(error.message));
             return;
           }
-          currentSound = sound;
+          entry.sound = sound;
           sound.play((success: boolean) => {
+            if (current !== entry) return; // stop() released it and returned
+            current = null;
             sound.release();
-            currentSound = null;
             if (success) {
               resolve();
             } else {
@@ -290,11 +300,14 @@ export function createRNSoundPlayer(Sound: RNSoundConstructor): AudioPlayer {
       });
     },
     async stop(): Promise<void> {
-      if (currentSound) {
-        currentSound.stop();
-        currentSound.release();
-        currentSound = null;
+      const entry = current;
+      current = null;
+      if (!entry) return;
+      if (entry.sound) {
+        entry.sound.stop();
+        entry.sound.release();
       }
+      entry.done();
     },
   };
 }

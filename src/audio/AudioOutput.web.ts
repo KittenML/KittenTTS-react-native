@@ -67,13 +67,15 @@ export class AudioOutput {
 }
 
 export function createBrowserAudioPlayer(): AudioPlayer {
-  let current: HTMLAudioElement | null = null;
-  let currentUrl: string | null = null;
+  // The clip playing now. stop() ends its play() call too, so speak() returns.
+  let current: { audio: HTMLAudioElement; url: string; done: () => void } | null = null;
 
-  const cleanup = () => {
-    if (currentUrl) URL.revokeObjectURL(currentUrl);
-    currentUrl = null;
+  const end = () => {
+    const playing = current;
     current = null;
+    if (!playing) return;
+    URL.revokeObjectURL(playing.url);
+    playing.done();
   };
 
   return {
@@ -87,39 +89,36 @@ export function createBrowserAudioPlayer(): AudioPlayer {
       const blob = new Blob([toArrayBuffer(wav) as any], { type: 'audio/wav' } as any);
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      current = audio;
-      currentUrl = url;
 
       return new Promise<void>((resolve, reject) => {
+        const entry = { audio, url, done: resolve };
+        current = entry;
         let started = false;
+        const fail = (error: unknown) => {
+          if (current !== entry) return; // stopped: play() already returned
+          current = null;
+          URL.revokeObjectURL(url);
+          reject(error);
+        };
         audio.onplaying = () => {
           if (started) return;
           started = true;
           options.onPlaybackStart?.();
         };
         audio.onended = () => {
-          cleanup();
-          resolve();
+          if (current === entry) end();
         };
-        audio.onerror = () => {
-          const error = new Error('Browser audio playback failed.');
-          cleanup();
-          reject(error);
-        };
-        audio.play().catch((error: unknown) => {
-          cleanup();
-          reject(error);
-        });
+        audio.onerror = () => fail(new Error('Browser audio playback failed.'));
+        audio.play().catch(fail);
       });
     },
 
     async stop(): Promise<void> {
-      const audio = current;
-      if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
+      if (current) {
+        current.audio.pause();
+        current.audio.currentTime = 0;
       }
-      cleanup();
+      end();
     },
   };
 }
