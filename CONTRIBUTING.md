@@ -8,33 +8,33 @@ npm run typecheck
 npm test
 ```
 
+`npm test` needs no Emscripten. Tests that need something you have not built or
+downloaded skip and say why. [docs/development.md](docs/development.md) has the full
+recipe, with the Kitten TTS 2 text data and `@kittentts/espeak-ng`.
+
 ## Build
 
 ```bash
 npm run build
 ```
 
-The build runs TypeScript and then `scripts/copy-generated.js`. The copy step is
-required because TypeScript does not copy the generated Emscripten runtime into
-`lib/`.
+The build makes the 0.8 models' phonemizer runtime from `vendor/cephonemizer` with
+Emscripten (`npm run build:phonemizer`), compiles TypeScript into `lib/`, and copies
+the runtime into `lib/` (TypeScript does not copy it). The runtime is generated, not
+committed. After the first build, `npm run build:ts` is enough until the C++ changes.
 
-## Phonemizer Runtime
+## Licence
 
-The checked-in phonemizer runtime is generated from `vendor/cephonemizer`.
-Rebuild it only when the C++ source changes:
+The package is Apache-2.0. Do not add code that is only available under the GPL or
+LGPL. espeak-ng lives in its own package, `@kittentts/espeak-ng`, which the SDK finds
+at run time and never imports.
 
-```bash
-npm run build:phonemizer
-npm run build
-```
-
-`build:phonemizer` requires Emscripten.
-
-## Local Package
-
-The examples install the SDK from the checked-in tarball. After SDK changes that
-should be tested in examples, regenerate it:
+## Trying Changes in the Examples
 
 ```bash
-npm --cache /tmp/kittentts-npm-cache pack
+npm run example:install -- ExpoExample
 ```
+
+This builds and packs this checkout and installs it into the example without changing
+its `package.json`. Set `KITTENTTS_ESPEAK_NG_DIR` to a built `@kittentts/espeak-ng`
+checkout to install that too.

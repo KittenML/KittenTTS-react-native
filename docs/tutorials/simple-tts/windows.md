@@ -15,7 +15,8 @@ You will create:
 - A download progress message
 - A debug APK you can install on a device
 
-KittenTTS runs on the device. It does not need a server or cloud TTS key.
+It uses Kitten TTS 2 Nano, which runs on the device. It does not need a server
+or cloud TTS key.
 
 ## Choose Your App Type
 
@@ -163,19 +164,14 @@ export default function App() {
     setStatus('Preparing voice model...');
 
     try {
-      const tts = await KittenTTS.create({ player }, (progress, info) => {
-        if (info?.stage === 'cached') {
-          setStatus('Model is already downloaded.');
-          return;
-        }
-
+      const tts = await KittenTTS.create({ model: 'kitten-tts-2-nano', player }, (progress, info) => {
         if (info?.stage === 'downloading') {
           setStatus(`Downloading model ${Math.round(progress * 100)}%`);
         }
       });
 
       setStatus('Speaking...');
-      await tts.speak(text);
+      await tts.speak(text, { voice: 'Eleanor' });
       setStatus('Done');
       await tts.dispose();
     } catch (error) {
@@ -296,19 +292,32 @@ Expected first run:
 3. The app speaks the text.
 4. The next run uses the local cache and should not download again.
 
-## Add A Retry Button
+## Retry A Failed Download
 
-If Wi-Fi drops during the first download, use `redownloadModel()`:
+If the user loses internet in the middle of a download, tapping `Speak` again is
+the retry: `KittenTTS.create()` downloads only the files that are still missing,
+and tries each file 4 times (`downloadRetries`). A file that did not finish is
+not kept.
+
+## Download Before The First Speak
+
+To show a setup screen before the user taps `Speak`, download the model's files
+first with `KittenTTS2Tiny.predownload()`. It downloads nothing when the files
+are already there:
 
 ```tsx
-async function retryModelDownload() {
+import { KittenTTS2Tiny } from '@kittentts/react-native';
+
+async function prepareModel() {
   setBusy(true);
 
   try {
-    await KittenTTS.redownloadModel(undefined, (progress) => {
-      setStatus(`Redownloading model ${Math.round(progress * 100)}%`);
+    await KittenTTS2Tiny.predownload({ model: 'kitten-tts-2-nano' }, (progress, info) => {
+      if (info?.stage === 'downloading') {
+        setStatus(`Downloading model ${Math.round(progress * 100)}%`);
+      }
     });
-    setStatus('Model downloaded. Tap Speak again.');
+    setStatus('Voice model is ready.');
   } catch (error) {
     setStatus(readableError(error));
   } finally {
@@ -317,24 +326,21 @@ async function retryModelDownload() {
 }
 ```
 
-Add a second button:
+## With Kitten TTS 0.8
+
+The same screen works with the older English models: pass
+`model: KittenModel.NanoInt8` to `create()`, and call
+`tts.speak(text, KittenVoice.Bella)` (0.8 takes a `KittenVoice`, not a name). The 0.8 models also have cache helpers that Kitten TTS 2
+does not: `KittenTTS.getModelCacheInfo()` checks the cache without downloading,
+and `KittenTTS.redownloadModel()` deletes and downloads the model again:
 
 ```tsx
-<Button title="Retry model download" onPress={retryModelDownload} disabled={busy} />
-```
+const cache = await KittenTTS.getModelCacheInfo({ model: KittenModel.NanoInt8 });
+setStatus(cache.isCached ? 'Voice model is ready.' : 'Voice model needs to download.');
 
-## Check Whether The Model Is Already Downloaded
-
-Use this before showing a download screen:
-
-```tsx
-const cache = await KittenTTS.getModelCacheInfo();
-
-if (cache.isCached) {
-  setStatus('Voice model is ready.');
-} else {
-  setStatus('Voice model needs to download.');
-}
+await KittenTTS.redownloadModel({ model: KittenModel.NanoInt8 }, (progress) => {
+  setStatus(`Redownloading model ${Math.round(progress * 100)}%`);
+});
 ```
 
 ## Build An APK
@@ -367,7 +373,7 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 | Expo Go opens | Use `npx expo run:android`, not Expo Go |
 | Gradle cannot find SDK | Check `ANDROID_HOME` and `ANDROID_SDK_ROOT` |
 | First generation is slow | Expected only on the first model download |
-| Download fails | Keep internet on, then call `KittenTTS.redownloadModel()` |
+| Download fails | Keep internet on, then tap `Speak` again |
 
 ## Where To Go Next
 

@@ -3,8 +3,9 @@
 Expo SDK 58 development-build example. This app showcases
 `KittenTTSResult.wordTimings` by generating audio and displaying each word's
 start and end time. It also shows how to start highlighting only after playback
-begins. Pick the 0.8 Nano int8 model or Kitten TTS 2 Nano, Pico or Mini: every
-on-device model returns word timings (the cloud models do not).
+begins. Pick Kitten TTS 2 Nano (the default), Pico or Mini, or the 0.8 Nano
+int8 model: every on-device model returns word timings (the cloud models do
+not). The text is English, so the app does not need `@kittentts/espeak-ng`.
 
 Expo Go will not work for this app because `@kittentts/react-native` depends on
 native modules for ONNX Runtime and filesystem access.
@@ -77,7 +78,7 @@ model downloads it the first time; later runs reuse the local cache.
 Use this flow when you want synced word highlighting:
 
 ```typescript
-const result = await tts.generate(text, voice);
+const result = await tts.generate(text, voice); // 'Eleanor' for Kitten TTS 2, a KittenVoice for 0.8
 setResult(result);
 
 await tts.play(result, {
@@ -88,13 +89,20 @@ await tts.play(result, {
 The example's `startWordHighlighting()` reads `result.wordTimings` and compares
 each word's `startTime` / `endTime` against the playback timer.
 
-For long documents, generate smaller chunks instead of one large string:
+For long documents, generate smaller chunks instead of one large string, and
+highlight each as it plays:
 
 ```typescript
-for await (const chunk of tts.generateStreaming(longText, voice)) {
-  await tts.play(chunk);
+for (const paragraph of paragraphs) {
+  const result = await tts.generate(paragraph, voice);
+  await tts.play(result, {
+    onPlaybackStart: () => startWordHighlighting(result),
+  });
 }
 ```
+
+`generateStreaming()` starts sooner, but with Kitten TTS 2 Nano, Pico and Mini
+its chunks carry no word timings (the 0.8 models' sentence chunks do).
 
 This is the recommended starting point for EPUB readers, articles, and other
 long-form text. Build your own queue if you need pause, resume, chapter state,

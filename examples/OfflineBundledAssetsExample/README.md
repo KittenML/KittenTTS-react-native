@@ -24,9 +24,9 @@ npm run android
 ```
 
 `npm run bundle:kittentts` downloads two models into `assets/kittentts` (about
-57 MB): the 0.8 Nano int8 model with its voices and phonemizer files, and Kitten
-TTS 2 Nano (int8) with English and its text data. The app lists both and loads
-either from the app's own files, with no network.
+57 MB): Kitten TTS 2 Nano (int8) with English and its text data, and the 0.8
+Nano int8 model with its voices and phonemizer files. The app lists both, Kitten
+TTS 2 Nano first, and loads either from the app's own files, with no network.
 
 Until `@kittentts/react-native` 2.0.0 is on npm, or to try changes to the SDK,
 install this checkout instead of `npm install`, from the repository root:
@@ -45,7 +45,9 @@ npx kittentts-react-native bundle-assets \
 ```
 
 `--languages` and `--weights` apply to the Kitten TTS 2 models; a language that
-is not bundled fails to load instead of downloading. See
+is not bundled fails to load instead of downloading. A language other than
+English and Japanese also needs `@kittentts/espeak-ng` installed and imported in
+the app (this example speaks English only, so it has none). See
 [Bundled offline assets](../../docs/guides/offline-assets.md).
 
 To bundle every supported model:
@@ -76,7 +78,8 @@ Run the CLI from your Expo app root:
 
 ```bash
 npx kittentts-react-native bundle-assets \
-  --models nano-int8 \
+  --models kitten-tts-2-nano \
+  --languages en \
   --out assets/kittentts
 ```
 
@@ -85,11 +88,12 @@ This creates:
 ```text
 assets/kittentts/
   manifest.json
-  kitten-tts-nano-0.8-int8/kitten_tts_nano_v0_8.onnx
-  kitten-tts-nano-0.8-int8/voices.npz
-  CEPhonemizer/en_rules.txt
-  CEPhonemizer/en_list.txt
+  kitten-tts-2-nano/        config.json, vocab.json, the English graph and voices, g2p/
+  kitten-tts-2-text/        the English text data
 ```
+
+Add `nano-int8` to `--models` to bundle the 0.8 Nano int8 model too
+(`kitten-tts-nano-0.8-int8/` and `CEPhonemizer/`).
 
 ### 4. Add The Expo Config Plugin
 
@@ -116,23 +120,35 @@ bundles during prebuild.
 
 ### 5. Load The Bundled Assets In App Code
 
-Import the generated manifest JSON and pass it to `createBundledAssetConfig()`.
-That helper tells KittenTTS where the bundled model, voices file, and phonemizer
-files are.
+Import the generated manifest JSON and pass it to `createBundledTinyOptions()`.
+That helper gives the `KittenTTS.create()` options that point at the bundled
+model and text data (on Android it copies the files out of the APK once, since
+APK assets are not files).
 
 ```typescript
 import * as ExpoAudio from 'expo-audio';
 import {
-  KittenModel,
   KittenTTS,
-  KittenVoice,
-  createBundledAssetConfig,
+  createBundledTinyOptions,
   createExpoAudioPlayer,
   type KittenTTSBundledAssetsManifest,
 } from '@kittentts/react-native';
 import manifestJson from './assets/kittentts/manifest.json';
 
 const manifest = manifestJson as KittenTTSBundledAssetsManifest;
+
+const tts = await KittenTTS.create({
+  ...(await createBundledTinyOptions(manifest, { model: 'kitten-tts-2-nano' })),
+  player: createExpoAudioPlayer(ExpoAudio),
+});
+
+await tts.speak('KittenTTS is running from bundled app assets.', { voice: 'Eleanor' });
+```
+
+For a bundled 0.8 model, `createBundledAssetConfig()` gives the config instead:
+
+```typescript
+import { KittenModel, KittenVoice, createBundledAssetConfig } from '@kittentts/react-native';
 
 const config = await createBundledAssetConfig(manifest, {
   model: KittenModel.NanoInt8,
@@ -141,19 +157,6 @@ const config = await createBundledAssetConfig(manifest, {
 
 const tts = await KittenTTS.create({
   ...config,
-  player: createExpoAudioPlayer(ExpoAudio),
-});
-
-await tts.speak('KittenTTS is running from bundled app assets.');
-```
-
-For Kitten TTS 2 Nano, Pico or Mini, `createBundledTinyOptions()` gives the
-options instead (on Android it copies the files out of the APK once, since APK
-assets are not files):
-
-```typescript
-const tts = await KittenTTS.create({
-  ...(await createBundledTinyOptions(manifest, { model: 'kitten-tts-2-nano' })),
   player: createExpoAudioPlayer(ExpoAudio),
 });
 ```
@@ -210,6 +213,7 @@ On iOS the plugin adds `kittentts` as a folder resource. That keeps final app
 bundle paths stable, for example:
 
 ```text
+kittentts/kitten-tts-2-nano/config.json
 kittentts/kitten-tts-nano-0.8-int8/kitten_tts_nano_v0_8.onnx
 ```
 
@@ -217,7 +221,8 @@ kittentts/kitten-tts-nano-0.8-int8/kitten_tts_nano_v0_8.onnx
 
 - `assets/kittentts/manifest.json` lists the bundled models and file names.
 - The Expo config plugin copies `assets/kittentts` into the native app bundle.
-- `createBundledAssetConfig(manifest)` reads the bundled files from the native
-  app bundle.
-- `KittenTTS.create(config)` starts without downloading model or phonemizer
-  files from the network.
+- `createBundledTinyOptions(manifest)` (Kitten TTS 2) and
+  `createBundledAssetConfig(manifest)` (0.8) point at the bundled files in the
+  native app bundle.
+- `KittenTTS.create()` with those options starts without downloading anything
+  from the network.

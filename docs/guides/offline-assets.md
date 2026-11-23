@@ -3,6 +3,10 @@
 By default, KittenTTS downloads model and phonemizer files on first run. Bundled
 assets are for apps that need to work before the user has a network connection.
 
+One command bundles both model families. The first sections show the 0.8
+models; for Kitten TTS 2 Nano, Pico and Mini, see
+[Kitten TTS 2 Nano, Pico and Mini](#kitten-tts-2-nano-pico-and-mini) below.
+
 ## Generate The Bundle
 
 Run this from your app root:
@@ -158,6 +162,11 @@ downloads only what is missing, and it lists files an earlier run left behind
 (another language, say), since the config plugin would still copy them into the
 app.
 
+A bundle with a language other than English and Japanese holds that language's
+espeak-ng data, but not espeak-ng itself: the app still installs and imports
+[`@kittentts/espeak-ng`](kitten-tts-2-tiny.md#languages-that-need-espeak-ng) to
+speak it.
+
 The manifest is then version 3: the 0.8 fields as before (`models` is `{}` when
 there are no 0.8 models, so `bundledAssetModels()` still works) and a
 `kittenTTS2` section with each model's weights, languages and files (path, size
@@ -167,6 +176,7 @@ Load it with `createBundledTinyOptions()` and spread the result into
 `KittenTTS.create()`:
 
 ```tsx
+import '@kittentts/espeak-ng';   // for German; not needed for English
 import {
   KittenTTS,
   bundledTinyModels,

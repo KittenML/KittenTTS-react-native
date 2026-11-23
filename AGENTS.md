@@ -4,17 +4,35 @@ Guidance for coding agents working on `@kittentts/react-native`.
 
 ## Project Overview
 
-This package is a React Native SDK for on-device KittenTTS speech synthesis.
-The public API downloads/caches model assets, prepares a JavaScript phonemizer,
-runs ONNX Runtime on-device, and optionally plays generated WAV audio.
+This package is the React Native SDK for Kitten TTS. `KittenTTS.create()` picks
+the engine from the model name, as the Python package does (`src/engineFor.ts`):
 
-Main flow:
+- `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'`: `KittenTTS2Tiny` (`src/tiny/`), on
+  the device with ONNX Runtime, downloading per language. With `apiKey` or
+  `baseUrl` they go to the Kitten API instead.
+- `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`): `KittenTTS2`, Kitten TTS 2 Cloud
+  on the Kitten API.
+- Anything else: the 0.8 models (`KittenTTS`), English, on the device. With no
+  `model` the default is still 0.8 Nano, for compatibility.
+
+The 0.8 flow:
 
 1. `KittenTTS.create()` resolves config, prepares the phonemizer, downloads any
    missing model files, loads `voices.npz`, and creates the ONNX engine.
 2. `tts.generate()` preprocesses text, phonemizes it, tokenizes IPA symbols,
    runs ONNX inference, and returns `KittenTTSResult`.
 3. `tts.speak()` calls `generate()` and sends the result to an `AudioPlayer`.
+
+## Licence
+
+The package is Apache-2.0 only. Do not add code that is only available under the
+GPL or LGPL, or code ported from such code, to this repository. espeak-ng and phonemizer's espeak backend (GPL-3.0-or-later)
+live in the separate `@kittentts/espeak-ng` package (its own repository). Apps
+import it once; it registers itself under `Symbol.for('@kittentts/espeak-ng')`,
+and `src/tiny/frontend/espeak/EspeakG2P.ts` looks it up there. Never import it
+from `src/`: the SDK must not depend on it, so apps that only use English,
+Japanese, the 0.8 models or the cloud ship no GPL code. Without it, the espeak
+languages throw `MISSING_DEPENDENCY`.
 
 ## Important Paths
 
@@ -52,8 +70,8 @@ Main flow:
 - `src/storage/AssetStorage.ts`: web/Node asset cache abstraction used by the web platform files.
 - `vendor/cephonemizer/`: vendored C++ phonemizer source.
 - `scripts/build-cephonemizer.js`: builds generated phonemizer runtime.
-- `scripts/build-espeak-ng.js`: builds the espeak-ng runtime for Kitten TTS 2
-  (`vendor/espeak-ng-bridge/`).
+- `scripts/copy-generated.js`: copies the generated phonemizer runtime into `lib/`.
+- `scripts/install-sdk-in-example.js`: `npm run example:install -- <example>`.
 - `scripts/patch-onnxruntime-react-native.js`: postinstall ONNX Runtime compatibility patches.
 - `examples/BareRNExample/`: bare React Native (0.81) example, the same app as
   ExpoExample. Its `App.tsx` is ExpoExample's with react-native-sound instead of
@@ -61,11 +79,12 @@ Main flow:
   (React Native CLI links only direct dependencies on iOS) and turns its Android
   linking off in `react-native.config.js`; its iOS app uses a `SceneDelegate`
   (the iOS 27 SDK requires the scene lifecycle).
-- `examples/ExpoExample/`: Expo SDK 58 example with every engine: 0.8, Kitten TTS
-  2 Nano/Pico/Mini on the device, Kitten TTS 2 Cloud and the cloud Nano/Pico/Mini
-  (key from the app or
-  `EXPO_PUBLIC_KITTENML_API_KEY`, or `EXPO_PUBLIC_KITTENML_BASE_URL`); iOS,
-  Android and web.
+- `examples/ExpoExample/`: Expo SDK 58 example with every engine: Kitten TTS 2
+  Nano/Pico/Mini on the device, Kitten TTS 2 Cloud and the cloud Nano/Pico/Mini
+  (key from the app or `EXPO_PUBLIC_KITTENML_API_KEY`, or
+  `EXPO_PUBLIC_KITTENML_BASE_URL`), and 0.8; iOS, Android and web. It and
+  BareRNExample import `@kittentts/espeak-ng` (dependency `^1.0.0`) for every
+  language.
 - `examples/ExpoWordTimingsExample/`: Expo SDK 58 word timing example (0.8 and
   Kitten TTS 2 on the device).
 - `examples/OfflineBundledAssetsExample/`: Expo SDK 58, models bundled into the
@@ -74,7 +93,9 @@ Main flow:
   KittenML's light and dark colors, the KittenML logo from `assets/kittenml.png`,
   no UI library) is the same file in all four; change it in all of them.
 - The examples depend on the published SDK version and have no lockfiles;
-  `npm run example:install -- <example>` installs this checkout into one.
+  `npm run example:install -- <example>` installs this checkout into one, and
+  also `@kittentts/espeak-ng` from `KITTENTTS_ESPEAK_NG_DIR` (a built checkout of
+  it) when that is set.
 
 ## Build And Validation
 
@@ -92,12 +113,18 @@ commit a key, and keep credentials in runtime-private (`#`) fields so a logged
 or serialised instance cannot leak them.
 
 `npm run build` writes compiled output to `lib/` and copies the generated
-Emscripten runtimes. Do not hand-edit `lib/` unless the user explicitly asks;
-prefer editing `src/` and rebuilding.
+Emscripten runtime of the 0.8 phonemizer. Do not hand-edit `lib/` unless the user
+explicitly asks; prefer editing `src/` and rebuilding.
 
-`npm run build:phonemizer` and `npm run build:espeak` require Emscripten
-(`docs/development.md`) and regenerate the runtimes under
-`src/phonemizer/generated/` and `src/tiny/frontend/espeak/generated/`.
+`npm run build:phonemizer` requires Emscripten (`docs/development.md`) and
+regenerates the runtime under `src/phonemizer/generated/`. espeak-ng is built in
+the `@kittentts/espeak-ng` repository, not here.
+
+The espeak parity tests load a built `@kittentts/espeak-ng` from
+`KITTENTTS_ESPEAK_NG_DIR` and skip without it; the data tests need
+`KITTEN_TTS_2_TINY_DATA`. The full run is
+`KITTENTTS_ESPEAK_NG_DIR=../kittentts-espeak-ng KITTEN_TTS_2_TINY_DATA=~/kitten-tts-2-text npm test`
+(79 tests).
 
 ## Dependency Notes
 
@@ -134,6 +161,11 @@ The default `CEPhonemizer` also caches dictionary files under:
 <DocumentDirectory>/KittenTTS/CEPhonemizer/
 ```
 
+Kitten TTS 2 Nano, Pico and Mini use the same root: each repository's files
+under `<DocumentDirectory>/KittenTTS/kitten-tts-2-nano/` (and `-pico/`,
+`-mini/`), and the shared text data under
+`<DocumentDirectory>/KittenTTS/kitten-tts-2-text-v2/`.
+
 ## Kitten TTS 2 Nano, Pico and Mini
 
 `src/tiny/` runs the small Kitten TTS 2 models (`KittenTTS2Tiny`). Its text
@@ -141,13 +173,15 @@ processing must give exactly the Python package's phonemes (kittenml,
 `kittenml/kittentts2_tiny/`), and the tests check that against fixtures the
 Python package writes (`tools/kitten-tts-2-tiny/*_fixtures.py`):
 
-- `src/tiny/frontend/english/`: tts_norm, num2words, spaCy's tokenizer and
+- `src/tiny/frontend/english/`: tts_norm, number words (an independent
+  implementation that matches Python num2words' output), spaCy's tokenizer and
   tagger features (the tagger network is `en/spacy-tagger.onnx`), misaki, and the
   CMUdict/BART fallback. Python string semantics (`src/tiny/frontend/pystr.ts`)
   matter: code-point lengths, Unicode `\d`/`\w`, `str.lower()` without the
   final-sigma rule.
-- `src/tiny/frontend/espeak/`: espeak-ng 1.52.0 compiled to plain JS
-  (`npm run build:espeak`), with phonemizer's and misaki's post-processing.
+- `src/tiny/frontend/espeak/`: misaki's and kittenml's steps around espeak-ng
+  1.52.0, which comes from `@kittentts/espeak-ng` (see Licence), and the list of
+  espeak-ng data files each language needs.
 - `src/tiny/frontend/japanese/`: Mini's Japanese: cutlet ported, and MeCab's
   lattice/Viterbi in TypeScript over UniDic rebuilt by
   `tools/kitten-tts-2-tiny/japanese_data.py` (ja/*.bin; JapaneseG2P keeps views
@@ -173,13 +207,15 @@ Traps:
 - Metro applies the `browser` map on native too; every entry needs a matching
   `react-native` entry (`tests/packaging.test.js`), and code shared by native
   and web must not import `node:` modules (hence `loader/NPZParser.ts`).
-- Both Emscripten runtimes need `-sWASM=0` (Hermes has no WebAssembly), which
-  Emscripten 7 marks deprecated: pin the emsdk version if it is removed.
+- The CEPhonemizer runtime (and `@kittentts/espeak-ng`'s) need `-sWASM=0`
+  (Hermes has no WebAssembly), which Emscripten 7 marks deprecated: pin the emsdk
+  version if it is removed.
 - The models need Hermes from React Native 0.75: the regexes built at run time
   use `\p{...}` and `\u{...}`, which Babel cannot rewrite (it rewrites literals).
 - Tests that need data skip, and say why, without `KITTEN_TTS_2_TINY_DATA` (the
-  text data folder as built, gzipped files included); model files come from the
-  Hugging Face cache or `KITTEN_TTS_2_TINY_MODEL_DIR` (`tests/helpers/tiny-data.js`).
+  text data folder as built, gzipped files included), and the espeak parity
+  tests without `KITTENTTS_ESPEAK_NG_DIR`; model files come from the Hugging Face
+  cache or `KITTEN_TTS_2_TINY_MODEL_DIR` (`tests/helpers/tiny-data.js`).
   `docs/development.md` has the recipe that runs them all.
 
 ## Error Handling

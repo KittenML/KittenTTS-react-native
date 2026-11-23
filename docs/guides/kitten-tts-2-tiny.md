@@ -1,9 +1,10 @@
 # Kitten TTS 2 Nano, Pico and Mini
 
 Small multilingual Kitten TTS 2 models that run on the phone's CPU with ONNX
-Runtime. They are the same models, voices and text processing as the Python
-package's `KittenTTS("KittenML/kitten-tts-2-nano")`, and the SDK gives the same
-phonemes for the same text.
+Runtime, and the SDK's main on-device engine. They are the same models, voices
+and text processing as the Python package's
+`KittenTTS("KittenML/kitten-tts-2-nano")`, and the SDK gives the same phonemes
+for the same text.
 
 | Model | Parameters | int8 per model | int4 per model | Languages |
 | --- | --- | --- | --- | --- |
@@ -18,6 +19,7 @@ SDK 55 and 58), iOS and Android, and in the browser through React Native Web.
 ## Usage
 
 ```tsx
+import '@kittentts/espeak-ng';    // only for de, fr, es, ...: see below
 import { KittenTTS } from '@kittentts/react-native';
 
 const tts = await KittenTTS.create({
@@ -86,6 +88,38 @@ Streaming chunks carry no word timings.
 The Python package's `backend="torch"` and `device` have no counterpart: the SDK
 always runs the ONNX graphs on the CPU.
 
+## Languages that need espeak-ng
+
+English goes through misaki, and Japanese (Mini) through misaki's cutlet G2P,
+both in this package. The other languages go through espeak-ng, as in the
+Python package:
+
+| Models | Languages |
+| --- | --- |
+| Nano, Pico and Mini | `de` `fr` `es` `it` `pt` `ru` `hi` |
+| Mini only | `da` `fi` `nl` `sv` `sw` `tr` `ko` |
+
+espeak-ng is GPL-3.0-or-later, so it is not in this package. It comes in
+`@kittentts/espeak-ng`, which an app installs and imports once:
+
+```bash
+npm install @kittentts/espeak-ng
+```
+
+```tsx
+import '@kittentts/espeak-ng';   // for example in the app's entry file
+```
+
+The import registers espeak-ng with the SDK; nothing else changes. It works on
+iOS, Android and the web. Without it, those languages fail with a
+`KittenTTSError` whose code is `MISSING_DEPENDENCY` and whose message names the
+package: in `create()` for the languages in `languages`, before anything
+downloads, or on first use for any other language. English and Japanese never
+need it.
+
+This is the split the Python package has: kittenml (Apache-2.0) gets espeak-ng
+from the separate `espeakng_loader` and `phonemizer` packages.
+
 ## What gets downloaded
 
 Files are cached under `<DocumentDirectory>/KittenTTS/` (or `storageDirectory`)
@@ -135,9 +169,10 @@ To host it elsewhere, build it with `tools/kitten-tts-2-tiny/build_text_pack.py`
   unidic-lite's 248 MB). It matches Python on 2,439 texts (2,000 Wikipedia
   sentences, paragraphs and hard cases), token by token against fugashi.
 - **Other languages:** espeak-ng 1.52.0 (the version the Python package loads),
-  compiled to plain JavaScript, with phonemizer's and misaki's post-processing
-  ported. It matches Python on 1,471 texts in 14 languages (2,214 checks over the
-  two phonemizer versions).
+  compiled to plain JavaScript in `@kittentts/espeak-ng` together with
+  phonemizer's espeak backend; misaki's and kittenml's steps around it are in
+  this package. It matches Python on 1,471 texts in 14 languages (2,214 checks
+  over the two phonemizer versions).
 - **Speech:** the same tokens, voice style row and post-processing (trimming,
   fades, gaps) as Python. The graphs add random noise in the vocoder, so two runs
   never give identical samples, in Python either. Rarely, a duration that sits on
@@ -229,9 +264,14 @@ in the Android emulator:
 
 ## Licence
 
-espeak-ng is GPL-3.0-or-later, and its compiled JavaScript
-(`lib/tiny/frontend/espeak/generated/espeakng-runtime.js`) ships in this package.
-It runs only when a language other than English or Japanese is used, but React
-Native bundles it into every app that uses this package. UniDic is
-BSD-3-Clause / LGPL-2.1 / GPL-2.0; the text data's README lists the licences of
+This package is Apache-2.0 and contains no GPL code: the ported text processing
+(kittenml, misaki, spaCy, cutlet, MeCab) is under permissive licences.
+
+`@kittentts/espeak-ng` is GPL-3.0-or-later. An app that includes it distributes
+GPL-3.0 code; an app that speaks only English or Japanese can leave it out and
+ships none.
+
+The text data downloaded at run time has its own licences: espeak-ng's data
+(GPL-3.0-or-later) is downloaded only for the espeak languages, and UniDic
+(Japanese) is BSD-3-Clause / LGPL-2.1 / GPL-2.0. The text data's README lists
 everything it holds. See [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

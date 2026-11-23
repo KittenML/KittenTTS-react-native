@@ -60,7 +60,7 @@ and the decoding controls belong to the big model only.
 | --- | --- | --- |
 | `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`) | Error: needs the API | `KittenTTS2`, Kitten TTS 2 Cloud |
 | `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'` | `KittenTTS2Tiny` on the device ([guide](kitten-tts-2-tiny.md)) | `KittenTTS2` on the API |
-| 0.8 models (default) | `KittenTTS` on the device | `KittenTTS` on the device |
+| Kitten TTS 0.8 models (and no `model`) | `KittenTTS` on the device | `KittenTTS` on the device |
 
 ## Keep Your Key Off The Device
 
@@ -100,9 +100,10 @@ The list holds every built-in voice and your organization's newest 100 saved
 voices. A saved voice's `voice_...` ID works as `voice` whether or not it is in
 the list.
 
-Built-in voices are IDs such as `bella_en`, not the eight on-device `KittenVoice`
-values. `bella_en`, `jasper_en`, `luna_en`, `bruno_en`, `rosie_en`, `hugo_en`,
-`kiki_en` and `leo_en` are the same eight speakers.
+Built-in voices are IDs such as `bella_en`, not the names on-device Nano, Pico
+and Mini use (`'Eleanor'`) or the eight 0.8 `KittenVoice` values. `bella_en`,
+`jasper_en`, `luna_en`, `bruno_en`, `rosie_en`, `hugo_en`, `kiki_en` and
+`leo_en` are the same eight speakers as the 0.8 voices.
 
 If `voice` is left out, the API uses its default voice; pass `defaultVoice` to
 `create()` to choose your own.

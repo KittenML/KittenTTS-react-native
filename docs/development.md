@@ -11,9 +11,9 @@ npm test
 ```
 
 `npm test` compiles the TypeScript needed by the unit tests and does not require
-Emscripten. It copies the generated runtimes into `lib/` when they have been
-built; the Kitten TTS 2 tests that need a missing runtime or data file skip and
-say why.
+Emscripten. It copies the generated CEPhonemizer runtime into `lib/` when it has
+been built. The Kitten TTS 2 tests that need a missing runtime, data file or
+`@kittentts/espeak-ng` skip and say why.
 
 ## Build
 
@@ -21,27 +21,29 @@ say why.
 npm run build
 ```
 
-The build regenerates the two Emscripten runtimes (the CEPhonemizer and
-espeak-ng), compiles TypeScript into `lib/`, and copies the runtimes into `lib/`.
+The build regenerates the Emscripten runtime of the 0.8 models' CEPhonemizer,
+compiles TypeScript into `lib/`, and copies the runtime into `lib/`.
 
 Generated files are not committed:
 
 - `lib/`
 - `*.tgz`
 - `src/phonemizer/generated/cephonemizer-runtime.js`
-- `src/tiny/frontend/espeak/generated/espeakng-runtime.js`
 
 Source files that stay committed:
 
-- `src/`, including the typed wrappers `src/phonemizer/generated/cephonemizer.ts`
-  and `src/tiny/frontend/espeak/generated/espeakng.ts`
+- `src/`, including the typed wrapper `src/phonemizer/generated/cephonemizer.ts`
 - `vendor/cephonemizer/`
-- `vendor/espeak-ng-bridge/`
 
-## Emscripten Runtimes
+espeak-ng, for the Kitten TTS 2 languages other than English and Japanese, is
+not built here. It is GPL-3.0-or-later, so it lives in its own repository and
+package, `@kittentts/espeak-ng`, which has its own `npm run build` (also with
+Emscripten). The SDK looks it up at run time and never imports it.
 
-Both runtimes need Emscripten 7.0.1 from emsdk. Pin the version: the runtimes
-build with `-sWASM=0` (Hermes has no WebAssembly), which Emscripten 7 marks
+## Emscripten Runtime
+
+The CEPhonemizer runtime needs Emscripten 7.0.1 from emsdk. Pin the version: it
+builds with `-sWASM=0` (Hermes has no WebAssembly), which Emscripten 7 marks
 deprecated.
 
 ```bash
@@ -55,12 +57,7 @@ Then run:
 
 ```bash
 npm run build:phonemizer   # src/phonemizer/generated/cephonemizer-runtime.js
-npm run build:espeak       # src/tiny/frontend/espeak/generated/espeakng-runtime.js
 ```
-
-`npm run build:espeak` builds espeak-ng 1.52.0 for the Kitten TTS 2 Nano, Pico
-and Mini models. It clones espeak-ng into `~/.cache/kittentts-espeak-ng/` (or
-`$KITTENTTS_ESPEAK_CACHE`).
 
 You do not need Emscripten to install the published npm package.
 
@@ -112,11 +109,19 @@ cache (download the three repositories once, e.g. with the Python package), or
 from `KITTEN_TTS_2_TINY_MODEL_DIR`, a folder holding `kitten-tts-2-nano/`,
 `kitten-tts-2-pico/` and `kitten-tts-2-mini/`.
 
+The parity tests of the espeak languages load a built `@kittentts/espeak-ng`
+from `KITTENTTS_ESPEAK_NG_DIR`: its folder, after `npm run build` there. Without
+it they skip; the tests of what happens when the package is missing always run.
+With a checkout of `@kittentts/espeak-ng` next to this one:
+
 ```bash
 python -I tools/kitten-tts-2-tiny/build_text_pack.py ~/kitten-tts-2-text
+(cd ../kittentts-espeak-ng && npm install && npm run build)
 npm run build
-KITTEN_TTS_2_TINY_DATA=~/kitten-tts-2-text npm test
+KITTENTTS_ESPEAK_NG_DIR=../kittentts-espeak-ng KITTEN_TTS_2_TINY_DATA=~/kitten-tts-2-text npm test
 ```
+
+That runs all 79 tests.
 
 ## Packaging
 
@@ -144,7 +149,15 @@ npm run example:install -- ExpoExample
 
 It builds `lib/`, packs it and installs the tarball into the example with
 `npm install --no-save`, so the example's `package.json` keeps the published
-version.
+version. The CEPhonemizer runtime must exist (`npm run build` once).
+
+ExpoExample and BareRNExample also import `@kittentts/espeak-ng`. Until it is on
+npm, point `KITTENTTS_ESPEAK_NG_DIR` at a checkout where `npm run build` has run,
+and the script packs and installs it too:
+
+```bash
+KITTENTTS_ESPEAK_NG_DIR=../kittentts-espeak-ng npm run example:install -- ExpoExample
+```
 
 If npm cache permissions fail locally:
 
@@ -168,4 +181,5 @@ npm run publish:npm
 
 That runs `npm publish --access public`, which is required for the public scoped
 package `@kittentts/react-native`. `prepublishOnly` runs the test suite, and
-`prepack` rebuilds both Emscripten runtimes plus `lib/`.
+`prepack` rebuilds the CEPhonemizer runtime plus `lib/`. `@kittentts/espeak-ng`
+is published from its own repository.

@@ -22,18 +22,51 @@ Pass a player to `KittenTTS.create()`:
 
 ```tsx
 const tts = await KittenTTS.create({
+  model: 'kitten-tts-2-nano',
   player: createExpoAudioPlayer(ExpoAudio),
 });
 ```
 
 If you do not need playback, use `generate()` instead.
 
+## A Language Fails With `MISSING_DEPENDENCY`
+
+Kitten TTS 2 Nano, Pico and Mini speak German, French, Spanish, Italian,
+Portuguese, Russian and Hindi (and Mini's Danish, Finnish, Dutch, Swedish,
+Swahili, Turkish and Korean) through espeak-ng, which comes in its own package
+because it is GPL-3.0-or-later. Install it and import it once, before the first
+`create()`:
+
+```bash
+npm install @kittentts/espeak-ng
+```
+
+```tsx
+import '@kittentts/espeak-ng';
+```
+
+English, Japanese, the 0.8 models and Kitten TTS 2 Cloud never need it. If the
+error says the package has another espeak-ng version, install the
+`@kittentts/espeak-ng` version that matches `@kittentts/react-native`.
+
 ## First Run Is Slow
 
-The selected model and phonemizer files download on first use. Later runs use
-the local cache.
+The selected model's files download on first use. Later runs use the local
+cache.
 
-Check the cache before showing setup UI:
+Kitten TTS 2 Nano, Pico and Mini download per language. Pass the languages you
+need up front to `create()`, or download them before the screen that speaks:
+
+```tsx
+await KittenTTS2Tiny.predownload(
+  { model: 'kitten-tts-2-nano', languages: ['en'] },
+  (progress, info) => {
+    if (info?.stage === 'complete' && info.cached) console.log('already downloaded');
+  },
+);
+```
+
+For the 0.8 models, check the cache before showing setup UI:
 
 ```tsx
 const cache = await KittenTTS.getModelCacheInfo({
@@ -48,8 +81,11 @@ console.log(cache.isCached);
 Downloads are written to temporary `.download` files first. A partial failed
 download is not treated as a valid model.
 
-The SDK retries each model and phonemizer file 4 times by default. If setup was
-interrupted, force a clean redownload:
+The SDK tries each file 4 times by default (`downloadRetries`). If setup was
+interrupted, call `KittenTTS.create()` again: Kitten TTS 2 Nano, Pico and Mini
+download only the files that are still missing.
+
+For the 0.8 models, you can also force a clean redownload:
 
 ```tsx
 await KittenTTS.redownloadModel({ model: KittenModel.NanoInt8 }, setProgress);

@@ -4,6 +4,9 @@ KittenTTS separates generation from playback. That keeps the SDK usable in apps
 that want to save WAV data, stream chunks, use a custom player, or sync UI state
 with the audio.
 
+The examples use Kitten TTS 2 Nano. The players and `speak()`, `play()` and
+`stopSpeaking()` work the same with Kitten TTS 2 Cloud and the 0.8 models.
+
 ## Generate Without Playing
 
 ```tsx
@@ -21,10 +24,14 @@ stack.
 Pass a player to `KittenTTS.create()`, then call `speak()`:
 
 ```tsx
-await tts.speak('Read this sentence.', KittenVoice.Bella, 1.0);
+await tts.speak('Read this sentence.', 'Eleanor', 1.0);
+await tts.speak('Read this sentence.', { voice: 'Eleanor', speed: 1.0 });
 ```
 
-The optional third argument is speed. Valid values are `0.5` to `2.0`.
+The optional third argument is speed; larger is faster. Kitten TTS 2 Nano, Pico
+and Mini take any positive speed, Kitten TTS 2 Cloud `0.25` to `4.0`, and the
+0.8 models `0.5` to `2.0` (with a `KittenVoice`, such as
+`tts.speak(text, KittenVoice.Bella, 1.0)`).
 
 ## Expo Audio
 
@@ -33,6 +40,7 @@ import * as ExpoAudio from 'expo-audio';
 import { KittenTTS, createExpoAudioPlayer } from '@kittentts/react-native';
 
 const tts = await KittenTTS.create({
+  model: 'kitten-tts-2-nano',
   player: createExpoAudioPlayer(ExpoAudio),
 });
 
@@ -46,6 +54,7 @@ import Sound from 'react-native-sound';
 import { KittenTTS, createRNSoundPlayer } from '@kittentts/react-native';
 
 const tts = await KittenTTS.create({
+  model: 'kitten-tts-2-nano',
   player: createRNSoundPlayer(Sound),
 });
 
@@ -63,6 +72,7 @@ import {
 } from '@kittentts/react-native';
 
 const tts = await KittenTTS.create({
+  model: 'kitten-tts-2-nano',
   player: createBrowserAudioPlayer(),
 });
 
@@ -87,6 +97,11 @@ await tts.play(result, {
 `onPlaybackStart` should fire when audio is actually playing, not when the file
 only starts loading. That detail matters for word highlighting.
 
+## Stop
+
+`tts.stopSpeaking()` stops the current playback; the `speak()` or `play()` call
+that was waiting returns.
+
 ## Custom Player
 
 Implement `AudioPlayer` if your app already has an audio layer:
@@ -108,5 +123,5 @@ const player: AudioPlayer = {
 Then pass it to the SDK:
 
 ```tsx
-const tts = await KittenTTS.create({ player });
+const tts = await KittenTTS.create({ model: 'kitten-tts-2-nano', player });
 ```

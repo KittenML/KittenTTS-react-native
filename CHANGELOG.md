@@ -2,16 +2,22 @@
 
 ## 2.0.0 (not yet published)
 
-A major version: two more engines behind `KittenTTS.create()`, and a licence and
-size change every app gets. Upgrading from 1.x:
+A major version: Kitten TTS 2 behind `KittenTTS.create()`, on the device and
+through the Kitten API. The 0.8 models stay, as the older English option.
+Upgrading from 1.x:
 
-- **Licence:** the package is now `Apache-2.0 AND GPL-3.0-or-later`. It ships
-  espeak-ng (GPL-3.0-or-later), compiled to JavaScript, for Kitten TTS 2's
-  languages other than English and Japanese. React Native bundles it into the
-  app even if only the 0.8 models are used. See
+- **Licence:** the package stays Apache-2.0 and ships no GPL code. Kitten TTS 2
+  Nano, Pico and Mini speak German, French, Spanish, Italian, Portuguese,
+  Russian and Hindi (and Mini's Danish, Finnish, Dutch, Swedish, Swahili,
+  Turkish and Korean) through espeak-ng, which is GPL-3.0-or-later and comes in
+  a separate package, `@kittentts/espeak-ng`: `npm install @kittentts/espeak-ng`
+  and `import '@kittentts/espeak-ng';` once. Without it those languages fail
+  with `MISSING_DEPENDENCY`. English, Japanese, the 0.8 models and the cloud
+  never need it. This mirrors the Python package, which gets espeak-ng from the
+  separate `espeakng_loader` and `phonemizer` packages. See
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - **App size:** a 0.8-only app's release JavaScript bundle grew from 2.06 MB to
-  2.89 MB (React Native 0.81, minified).
+  2.33 MB (React Native 0.81, minified).
 - **Bare React Native on iOS:** list `onnxruntime-react-native` in the app
   (React Native CLI links only direct dependencies on iOS) and keep its Android
   linking off; see [Getting started](docs/getting-started.md#bare-react-native).
@@ -19,8 +25,13 @@ size change every app gets. Upgrading from 1.x:
 - **`KittenTTSErrorCode`** has new members, so an exhaustive `switch` over it needs
   a `default`.
 - The 0.8 API is unchanged otherwise: `KittenTTS.create()` without a Kitten TTS 2
-  model behaves as before.
+  model behaves as before, and with no `model` it still loads 0.8 Nano.
 
+- Added Kitten TTS 2 Nano, Pico and Mini on the device (`KittenTTS.create({
+  model: 'kitten-tts-2-nano' })`, or `'-pico'`, `'-mini'`): 8 languages (Mini
+  16, Japanese included), int8 or int4 weights, word timings, and the Python
+  package's phonemes. Files download per language. They need React Native 0.75+
+  (Hermes). See the [guide](docs/guides/kitten-tts-2-tiny.md).
 - Added Kitten TTS 2 Cloud through the Kitten API:
   `KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey })` (or `'kitten-tts-2'`,
   the Python package's name) returns a `KittenTTS2`
@@ -30,11 +41,8 @@ size change every app gets. Upgrading from 1.x:
   `KittenAPIError`. Existing on-device code is unchanged. With an `apiKey` or
   `baseUrl`, Kitten TTS 2 Nano, Pico and Mini run on the API too, with their own
   voices; without one they run on the device.
-- Added Kitten TTS 2 Nano, Pico and Mini (`KittenTTS.create({ model:
-  'kitten-tts-2-nano' })`): 8 languages (Mini 16), int8 or int4 weights, and
-  the Python package's phonemes. They need React Native 0.75+. espeak-ng, used
-  for most non-English languages, is GPL-3.0-or-later. See the
-  [guide](docs/guides/kitten-tts-2-tiny.md).
+- English number words for Kitten TTS 2 come from an independent implementation
+  that gives the same output as Python's `num2words`.
 - `bundle-assets` bundles Kitten TTS 2 Nano, Pico and Mini for offline use
   (`--models kitten-tts-2-nano --weights int8 --languages en,de`): exactly the
   model files and text data `create()` reads, in a version 3 manifest that the
@@ -42,22 +50,24 @@ size change every app gets. Upgrading from 1.x:
   `KittenTTS.create()` options (on Android it copies the files out of the APK
   once). See [Bundled Offline Assets](docs/guides/offline-assets.md#kitten-tts-2-nano-pico-and-mini).
 - `KittenTTSResult` takes the voice type as a parameter; `KittenTTSErrorCode`
-  has `INVALID_ARGUMENT`, `API_ERROR`, `NETWORK_ERROR`, `CANCELLED` and
-  `UNSUPPORTED_RUNTIME`.
+  has `INVALID_ARGUMENT`, `API_ERROR`, `NETWORK_ERROR`, `CANCELLED`,
+  `UNSUPPORTED_RUNTIME` and `MISSING_DEPENDENCY`.
 - `play()` on a 0.8 `KittenTTS` takes a result from any model.
 - The npm package no longer includes the README's images (`assets/`, 21.6 MB of
-  GIFs): it is about 3 MB instead of 21.5 MB.
+  GIFs): it is about 0.5 MB instead of 21.5 MB.
 - `'kitten-tts-2-cloud'` names Kitten TTS 2 Cloud, as KittenML calls it;
   `'kitten-tts-2'` still works.
 - `npm run example:install -- <example>` installs this checkout of the SDK into
-  an example without changing its `package.json`.
+  an example without changing its `package.json`, and a local build of
+  `@kittentts/espeak-ng` too when `KITTENTTS_ESPEAK_NG_DIR` names one.
 - The examples run on Expo SDK 58 (React Native 0.88) and, for the bare one,
-  React Native 0.81, on iOS, Android and the web (Expo). Each lets you pick 0.8,
-  Kitten TTS 2 on the device or Kitten TTS 2 in the cloud; the word-timings and
-  offline examples include Kitten TTS 2 Nano, Pico and Mini; all can stop
-  playback.
+  React Native 0.81, on iOS, Android and the web (Expo). Each lets you pick
+  Kitten TTS 2 on the device, Kitten TTS 2 in the cloud or 0.8; the Expo and
+  bare examples import `@kittentts/espeak-ng` for every language; the
+  word-timings example includes Kitten TTS 2 Nano, Pico and Mini, and the
+  offline example bundles Kitten TTS 2 Nano; all can stop playback.
 - `npm run build:phonemizer` links with `em++` (current Emscripten no longer
-  links C++ through `emcc`), and `npm run build` also builds espeak-ng.
+  links C++ through `emcc`).
 
 - Fixed `stopSpeaking()` with the browser and react-native-sound players: the
   `speak()` or `play()` call that was waiting never returned (on iOS, stopping a
