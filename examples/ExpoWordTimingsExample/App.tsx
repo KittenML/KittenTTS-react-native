@@ -1,106 +1,144 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as ExpoAudio from 'expo-audio';
 import {
   KittenModel,
   KittenTTS,
-  KittenTTSResult,
+  KittenTTS2Tiny,
   KittenTTSErrorCode,
   KittenVoice,
+  createBrowserAudioPlayer,
   createExpoAudioPlayer,
   isKittenTTSError,
-  modelDisplayName,
   voiceDisplayName,
 } from '@kittentts/react-native';
-import type { KittenWordTiming } from '@kittentts/react-native';
+import type { KittenTTSResult, KittenWordTiming } from '@kittentts/react-native';
 
 type Status =
   | { kind: 'idle'; message: string }
-  | { kind: 'preparing' }
-  | { kind: 'loading'; progress: number }
+  | { kind: 'loading'; progress?: number }
   | { kind: 'working'; message: string }
+  | { kind: 'playing' }
   | { kind: 'error'; message: string };
 
-const MODEL = KittenModel.NanoInt8;
-const VOICES = [
-  KittenVoice.Bella,
-  KittenVoice.Luna,
-  KittenVoice.Jasper,
-  KittenVoice.Leo,
+type AnyTTS = KittenTTS | KittenTTS2Tiny;
+
+// Every on-device model returns word timings: the 0.8 models and Kitten TTS 2 Nano,
+// Pico and Mini. (The cloud models don't.)
+const MODELS = [
+  { id: KittenModel.NanoInt8 as string, label: '0.8 Nano int8' },
+  { id: 'kitten-tts-2-nano', label: 'TTS 2 Nano' },
+  { id: 'kitten-tts-2-pico', label: 'TTS 2 Pico' },
+  { id: 'kitten-tts-2-mini', label: 'TTS 2 Mini' },
 ];
+const VOICES_08 = [KittenVoice.Bella, KittenVoice.Luna, KittenVoice.Jasper, KittenVoice.Leo];
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <WordTimings />
+    </SafeAreaProvider>
+  );
+}
+
+function WordTimings() {
   const [text, setText] = useState(
     'KittenTTS runs fully on device and now returns word-level timestamps. Generate this paragraph to see when each word starts and ends in the audio.',
   );
-  const [voice, setVoice] = useState(KittenVoice.Bella);
-  const [status, setStatus] = useState<Status>({
-    kind: 'idle',
-    message: 'Ready to load the model.',
-  });
-  const [result, setResult] = useState<KittenTTSResult | null>(null);
+  const [model, setModel] = useState(MODELS[0].id);
+  const [voices, setVoices] = useState<{ id: string; label: string }[]>([]);
+  const [voice, setVoice] = useState('');
+  const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  const [result, setResult] = useState<KittenTTSResult<string> | null>(null);
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
-  const ttsRef = useRef<KittenTTS | null>(null);
+  const ttsRef = useRef<AnyTTS | null>(null);
+  const loadIdRef = useRef(0);
   const highlightTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const player = useMemo(() => createExpoAudioPlayer(ExpoAudio), []);
+  const player = useMemo(
+    () => (Platform.OS === 'web' ? createBrowserAudioPlayer() : createExpoAudioPlayer(ExpoAudio)),
+    [],
+  );
 
-  const busy = status.kind === 'preparing' || status.kind === 'loading' || status.kind === 'working';
+  const busy = status.kind === 'loading' || status.kind === 'working' || status.kind === 'playing';
+
+  const load = useCallback(async (nextModel: string) => {
+    const loadId = ++loadIdRef.current;
+    setResult(null);
+    const previous = ttsRef.current;
+    ttsRef.current = null;
+    await previous?.dispose().catch(() => {});
+    setStatus({ kind: 'loading' });
+    try {
+      const onProgress = (progress: number, info?: { stage?: string }) => {
+        if (loadId === loadIdRef.current) {
+          setStatus({ kind: 'loading', progress: info?.stage === 'downloading' ? progress : undefined });
+        }
+      };
+      const instance: AnyTTS = nextModel.startsWith('kitten-tts-2')
+        ? await KittenTTS.create({ model: nextModel as 'kitten-tts-2-nano', player }, onProgress)
+        : await KittenTTS.create({ model: nextModel as KittenModel, player }, onProgress);
+      if (loadId !== loadIdRef.current) {
+        await instance.dispose();
+        return;
+      }
+      // English voices, since the text is English.
+      const list = instance instanceof KittenTTS2Tiny
+        ? instance.voices('en').map(v => ({ id: v.name, label: v.name }))
+        : VOICES_08.map(v => ({ id: v as string, label: voiceDisplayName(v) }));
+      ttsRef.current = instance;
+      setVoices(list);
+      setVoice(list[0]?.id ?? '');
+      setStatus({ kind: 'idle', message: 'Ready.' });
+    } catch (error) {
+      if (loadId === loadIdRef.current) setStatus({ kind: 'error', message: friendlyError(error) });
+    }
+  }, [player]);
 
   useEffect(() => {
+    load(MODELS[0].id);
     return () => {
-      if (highlightTimerRef.current) {
-        clearInterval(highlightTimerRef.current);
-        highlightTimerRef.current = null;
-      }
+      stopWordHighlighting();
+      loadIdRef.current += 1;
+      // Fast Refresh can tear down the JS runtime while ONNX native objects are
+      // still active, so avoid releasing the session during dev reloads.
+      if (!__DEV__) ttsRef.current?.dispose().catch(() => {});
+      ttsRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function getTTS(): Promise<KittenTTS> {
-    if (ttsRef.current) return ttsRef.current;
+  function selectModel(next: string) {
+    setModel(next);
+    load(next);
+  }
 
-    setStatus({ kind: 'preparing' });
-    const cached = await KittenTTS.isModelDownloaded({ model: MODEL });
-    const instance = await KittenTTS.create(
-      { model: MODEL, defaultVoice: voice, player },
-      (progress, info) => {
-        if (info?.stage === 'downloading') {
-          setStatus({ kind: 'loading', progress });
-        }
-      },
-    );
-
-    ttsRef.current = instance;
-    setStatus({
-      kind: 'idle',
-      message: cached ? 'Loaded from cache.' : 'Downloaded and loaded.',
-    });
-    return instance;
+  function generate(tts: AnyTTS): Promise<KittenTTSResult<string>> {
+    return tts instanceof KittenTTS2Tiny
+      ? tts.generate(text, { voice, language: 'en' })
+      : tts.generate(text, voice as KittenVoice);
   }
 
   async function speak() {
-    if (!text.trim()) {
-      setStatus({ kind: 'error', message: 'Enter text before speaking.' });
-      return;
-    }
-
+    const tts = ttsRef.current;
+    if (!tts || !text.trim()) return;
     try {
       setResult(null);
       setActiveWordIndex(null);
-      const tts = await getTTS();
       setStatus({ kind: 'working', message: 'Generating audio...' });
-      const nextResult = await tts.generate(text, voice);
+      const nextResult = await generate(tts);
       setResult(nextResult);
-      setStatus({ kind: 'working', message: 'Playing with word highlighting...' });
+      setStatus({ kind: 'playing' });
       await tts.play(nextResult, {
         onPlaybackStart: () => startWordHighlighting(nextResult),
       });
@@ -113,22 +151,22 @@ export default function App() {
   }
 
   async function generateOnly() {
-    if (!text.trim()) {
-      setStatus({ kind: 'error', message: 'Enter text before generating.' });
-      return;
-    }
-
+    const tts = ttsRef.current;
+    if (!tts || !text.trim()) return;
     try {
       setResult(null);
       setActiveWordIndex(null);
-      const tts = await getTTS();
       setStatus({ kind: 'working', message: 'Generating audio...' });
-      const nextResult = await tts.generate(text, voice);
+      const nextResult = await generate(tts);
       setResult(nextResult);
       setStatus({ kind: 'idle', message: 'Generated audio with word timings.' });
     } catch (error) {
       setStatus({ kind: 'error', message: friendlyError(error) });
     }
+  }
+
+  function stop() {
+    ttsRef.current?.stopSpeaking().catch(() => {});
   }
 
   return (
@@ -138,13 +176,26 @@ export default function App() {
         <View style={styles.header}>
           <Text style={styles.title}>Word Timings</Text>
           <Text style={styles.subtitle}>
-            Expo SDK 55 development-build demo. Expo Go will not work.
+            Expo development build. Expo Go will not work.
           </Text>
         </View>
 
         <View style={styles.panel}>
           <Text style={styles.label}>Model</Text>
-          <Text style={styles.value}>{modelDisplayName(MODEL)}</Text>
+          <View style={styles.options}>
+            {MODELS.map(item => (
+              <Pressable
+                key={item.id}
+                disabled={busy}
+                onPress={() => selectModel(item.id)}
+                style={[styles.option, model === item.id && styles.optionSelected]}
+              >
+                <Text style={[styles.optionText, model === item.id && styles.optionTextSelected]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         <View style={styles.panel}>
@@ -160,48 +211,49 @@ export default function App() {
           />
         </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.label}>Voice</Text>
-          <View style={styles.options}>
-            {VOICES.map((item) => (
-              <Pressable
-                key={item}
-                disabled={busy}
-                onPress={() => setVoice(item)}
-                style={[styles.option, voice === item && styles.optionSelected]}
-              >
-                <Text
-                  style={[
-                    styles.optionText,
-                    voice === item && styles.optionTextSelected,
-                  ]}
+        {voices.length > 0 ? (
+          <View style={styles.panel}>
+            <Text style={styles.label}>Voice</Text>
+            <View style={styles.options}>
+              {voices.map(item => (
+                <Pressable
+                  key={item.id}
+                  disabled={busy}
+                  onPress={() => setVoice(item.id)}
+                  style={[styles.option, voice === item.id && styles.optionSelected]}
                 >
-                  {voiceDisplayName(item)}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text style={[styles.optionText, voice === item.id && styles.optionTextSelected]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        </View>
+        ) : null}
 
         <StatusView status={status} />
 
         <View style={styles.actions}>
           <Pressable
-            disabled={busy}
+            disabled={busy || !text.trim()}
             onPress={generateOnly}
-            style={[styles.button, busy && styles.buttonDisabled]}
+            style={[styles.button, (busy || !text.trim()) && styles.buttonDisabled]}
           >
             <Text style={styles.buttonText}>Generate</Text>
           </Pressable>
-          <Pressable
-            disabled={busy}
-            onPress={speak}
-            style={[styles.button, styles.primaryButton, busy && styles.buttonDisabled]}
-          >
-            <Text style={[styles.buttonText, styles.primaryButtonText]}>
-              Speak
-            </Text>
-          </Pressable>
+          {status.kind === 'playing' ? (
+            <Pressable onPress={stop} style={[styles.button, styles.primaryButton]}>
+              <Text style={[styles.buttonText, styles.primaryButtonText]}>Stop</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              disabled={busy || !text.trim()}
+              onPress={speak}
+              style={[styles.button, styles.primaryButton, (busy || !text.trim()) && styles.buttonDisabled]}
+            >
+              <Text style={[styles.buttonText, styles.primaryButtonText]}>Speak</Text>
+            </Pressable>
+          )}
         </View>
 
         {result ? (
@@ -211,7 +263,7 @@ export default function App() {
     </SafeAreaView>
   );
 
-  function startWordHighlighting(nextResult: KittenTTSResult) {
+  function startWordHighlighting(nextResult: KittenTTSResult<string>) {
     stopWordHighlighting();
     const wordTimings = nextResult.wordTimings;
 
@@ -241,7 +293,7 @@ function ResultCard({
   result,
   activeWordIndex,
 }: {
-  result: KittenTTSResult;
+  result: KittenTTSResult<string>;
   activeWordIndex: number | null;
 }) {
   const wordTimings: KittenWordTiming[] = result.wordTimings;
@@ -320,22 +372,18 @@ function ResultCard({
 }
 
 function StatusView({ status }: { status: Status }) {
-  if (status.kind === 'preparing') {
+  if (status.kind === 'loading' || status.kind === 'working' || status.kind === 'playing') {
+    const message = status.kind === 'loading'
+      ? status.progress !== undefined
+        ? `Downloading the model... ${Math.round(status.progress * 100)}%`
+        : 'Loading the model...'
+      : status.kind === 'working'
+        ? status.message
+        : 'Playing with word highlighting...';
     return (
       <View style={styles.status}>
         <ActivityIndicator />
-        <Text style={styles.statusText}>Preparing assets...</Text>
-      </View>
-    );
-  }
-
-  if (status.kind === 'loading') {
-    return (
-      <View style={styles.status}>
-        <ActivityIndicator />
-        <Text style={styles.statusText}>
-          Downloading assets... {Math.round(status.progress * 100)}%
-        </Text>
+        <Text style={styles.statusText}>{message}</Text>
       </View>
     );
   }

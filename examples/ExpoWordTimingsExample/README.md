@@ -1,9 +1,10 @@
 # KittenTTS Expo Word Timings Example
 
-Expo SDK 55 development-build example created with `create-expo-app`.
-This app showcases `KittenTTSResult.wordTimings` by generating audio and
-displaying each word's start and end time. It also shows how to start
-highlighting only after playback begins.
+Expo SDK 58 development-build example. This app showcases
+`KittenTTSResult.wordTimings` by generating audio and displaying each word's
+start and end time. It also shows how to start highlighting only after playback
+begins. Pick the 0.8 Nano int8 model or Kitten TTS 2 Nano, Pico or Mini: every
+on-device model returns word timings (the cloud models do not).
 
 Expo Go will not work for this app because `@kittentts/react-native` depends on
 native modules for ONNX Runtime and filesystem access.
@@ -43,6 +44,13 @@ cd examples/ExpoWordTimingsExample
 npm start -- --clear
 ```
 
+Until `@kittentts/react-native` 1.3.0 is on npm, or to try changes to the SDK,
+install this checkout instead of `npm install`, from the repository root:
+
+```bash
+npm run example:install -- ExpoWordTimingsExample
+```
+
 ## Build A Debug APK
 
 The APK will be written under `android/app/build/outputs/apk/debug/`.
@@ -61,9 +69,8 @@ assembleDebug` inside the `android` folder.
 ## Notes
 
 Tap **Generate** to inspect word-level timestamps without playback, or **Speak**
-to generate, play, and show the same timing metadata. The first app run
-downloads the Nano int8 model and phonemizer data. Later runs reuse the local
-cache.
+to generate, play (with **Stop**), and show the same timing metadata. Choosing a
+model downloads it the first time; later runs reuse the local cache.
 
 ## What To Copy Into Your App
 

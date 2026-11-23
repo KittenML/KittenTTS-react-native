@@ -23,16 +23,30 @@ For Android:
 npm run android
 ```
 
-`npm run bundle:kittentts` downloads the Nano int8 model, `voices.npz`, and the
-phonemizer files into `assets/kittentts`.
+`npm run bundle:kittentts` downloads two models into `assets/kittentts` (about
+57 MB): the 0.8 Nano int8 model with its voices and phonemizer files, and Kitten
+TTS 2 Nano (int8) with English and its text data. The app lists both and loads
+either from the app's own files, with no network.
 
-To bundle more than one model or to use in your project:
+Until `@kittentts/react-native` 1.3.0 is on npm, or to try changes to the SDK,
+install this checkout instead of `npm install`, from the repository root:
+
+```bash
+npm run example:install -- OfflineBundledAssetsExample
+```
+
+To bundle other models, or more languages for Kitten TTS 2:
 
 ```bash
 npx kittentts-react-native bundle-assets \
-  --models nano-int8,micro \
+  --models nano-int8,micro,kitten-tts-2-pico \
+  --languages en,de,fr --weights int4 \
   --out assets/kittentts
 ```
+
+`--languages` and `--weights` apply to the Kitten TTS 2 models; a language that
+is not bundled fails to load instead of downloading. See
+[Bundled offline assets](../../docs/guides/offline-assets.md).
 
 To bundle every supported model:
 
@@ -133,7 +147,18 @@ const tts = await KittenTTS.create({
 await tts.speak('KittenTTS is running from bundled app assets.');
 ```
 
-The complete working version is in [`App.tsx`](./App.tsx).
+For Kitten TTS 2 Nano, Pico or Mini, `createBundledTinyOptions()` gives the
+options instead (on Android it copies the files out of the APK once, since APK
+assets are not files):
+
+```typescript
+const tts = await KittenTTS.create({
+  ...(await createBundledTinyOptions(manifest, { model: 'kitten-tts-2-nano' })),
+  player: createExpoAudioPlayer(ExpoAudio),
+});
+```
+
+The complete working version, with both, is in [`App.tsx`](./App.tsx).
 
 ### 6. Build The Native App
 
