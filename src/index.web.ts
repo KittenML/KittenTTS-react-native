@@ -39,6 +39,8 @@ export type {
   CreateBundledAssetConfigOptions,
   KittenTTSBundledAssetsManifest,
 } from './KittenTTSBundledAssets.web';
+export { bundledTinyModels, createBundledTinyOptions } from './KittenTTSBundledAssets.web';
+export type { BundledTinyOptions, CreateBundledTinyOptions } from './KittenTTSBundledAssets.web';
 export type {
   DownloadProgressInfo,
   ModelCacheInfo,

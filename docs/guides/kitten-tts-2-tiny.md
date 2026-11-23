@@ -50,6 +50,11 @@ await tts.dispose();
 `KittenTTS2Tiny.predownload(options, onProgress)` downloads a model's files for
 `options.languages` without loading it.
 
+To ship a model inside the app instead, so it works offline from the first
+launch, bundle it with `npx @kittentts/react-native bundle-assets --models
+kitten-tts-2-nano --languages en,de` and load it with `createBundledTinyOptions()`:
+see [Bundled Offline Assets](offline-assets.md#kitten-tts-2-nano-pico-and-mini).
+
 `generate()` returns a `KittenTTSResult` (24 kHz float samples, `wavData()`,
 `duration`); `result.voice` is the voice's name. Long text is cut at sentence
 ends into chunks of at most 350 phonemes, joined with 0.15 s of silence, as in
