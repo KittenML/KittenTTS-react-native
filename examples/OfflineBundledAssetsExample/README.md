@@ -28,7 +28,7 @@ npm run android
 TTS 2 Nano (int8) with English and its text data. The app lists both and loads
 either from the app's own files, with no network.
 
-Until `@kittentts/react-native` 1.3.0 is on npm, or to try changes to the SDK,
+Until `@kittentts/react-native` 2.0.0 is on npm, or to try changes to the SDK,
 install this checkout instead of `npm install`, from the repository root:
 
 ```bash

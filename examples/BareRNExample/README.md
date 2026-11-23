@@ -6,8 +6,8 @@ This is the bare React Native example. Use it if you want to test the SDK in a
 normal React Native app with native `ios/` and `android/` folders.
 
 It is the same app as `examples/ExpoExample` (every engine: the 0.8 models,
-Kitten TTS 2 Nano, Pico and Mini on the device, and the Kitten TTS 2 models in the
-cloud), in React Native 0.81 with `react-native-sound` for playback.
+Kitten TTS 2 Nano, Pico and Mini on the device, and Kitten TTS 2 Cloud with the
+cloud Nano, Pico and Mini), in React Native 0.81 with `react-native-sound` for playback.
 
 Besides `@kittentts/react-native`, a bare app lists `onnxruntime-react-native` and
 `react-native-fs` itself: React Native CLI links only the app's own dependencies
@@ -21,7 +21,7 @@ the native Android/iOS projects.
 ## Features
 
 - Engine and model selection: 0.8 (Nano, Nano int8, Micro, Mini), Kitten TTS 2
-  on the device (Nano, Pico, Mini), Kitten TTS 2 in the cloud
+  on the device (Nano, Pico, Mini), Kitten TTS 2 Cloud and the cloud Nano, Pico, Mini
 - Language and voice selection from the loaded model
 - Adjustable speed (0.5x to 2x)
 - Generate, speak and stop
@@ -81,7 +81,7 @@ The first run downloads the model files, so keep the simulator/emulator online.
 On macOS/Linux, `npm run android:unix` and `npm run ios:unix` are optional
 helpers that start Metro automatically.
 
-Until `@kittentts/react-native` 1.3.0 is on npm, or to try changes to the SDK,
+Until `@kittentts/react-native` 2.0.0 is on npm, or to try changes to the SDK,
 install this checkout instead of `npm install`, from the repository root (then
 `pod install` in `ios/` as above):
 

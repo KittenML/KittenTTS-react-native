@@ -1,9 +1,29 @@
 # Changelog
 
-## 1.3.0 (not yet published)
+## 2.0.0 (not yet published)
 
-- Added Kitten TTS 2 through the Kitten API:
-  `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
+A major version: two more engines behind `KittenTTS.create()`, and a licence and
+size change every app gets. Upgrading from 1.x:
+
+- **Licence:** the package is now `Apache-2.0 AND GPL-3.0-or-later`. It ships
+  espeak-ng (GPL-3.0-or-later), compiled to JavaScript, for Kitten TTS 2's
+  languages other than English and Japanese. React Native bundles it into the
+  app even if only the 0.8 models are used. See
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **App size:** a 0.8-only app's release JavaScript bundle grew from 2.06 MB to
+  2.89 MB (React Native 0.81, minified).
+- **Bare React Native on iOS:** list `onnxruntime-react-native` in the app
+  (React Native CLI links only direct dependencies on iOS) and keep its Android
+  linking off; see [Getting started](docs/getting-started.md#bare-react-native).
+- **`react-native-fs`** stays below 2.41 (2.41 needs React Native 0.88).
+- **`KittenTTSErrorCode`** has new members, so an exhaustive `switch` over it needs
+  a `default`.
+- The 0.8 API is unchanged otherwise: `KittenTTS.create()` without a Kitten TTS 2
+  model behaves as before.
+
+- Added Kitten TTS 2 Cloud through the Kitten API:
+  `KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey })` (or `'kitten-tts-2'`,
+  the Python package's name) returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,
   plus voice cloning from a `reference` recording, presets, decoding controls and
   `availableVoices`, like the Python package. Failed requests throw
@@ -25,6 +45,10 @@
   has `INVALID_ARGUMENT`, `API_ERROR`, `NETWORK_ERROR`, `CANCELLED` and
   `UNSUPPORTED_RUNTIME`.
 - `play()` on a 0.8 `KittenTTS` takes a result from any model.
+- The npm package no longer includes the README's images (`assets/`, 21.6 MB of
+  GIFs): it is about 3 MB instead of 21.5 MB.
+- `'kitten-tts-2-cloud'` names Kitten TTS 2 Cloud, as KittenML calls it;
+  `'kitten-tts-2'` still works.
 - `npm run example:install -- <example>` installs this checkout of the SDK into
   an example without changing its `package.json`.
 - The examples run on Expo SDK 58 (React Native 0.88) and, for the bare one,

@@ -44,7 +44,7 @@ cd examples/ExpoWordTimingsExample
 npm start -- --clear
 ```
 
-Until `@kittentts/react-native` 1.3.0 is on npm, or to try changes to the SDK,
+Until `@kittentts/react-native` 2.0.0 is on npm, or to try changes to the SDK,
 install this checkout instead of `npm install`, from the repository root:
 
 ```bash

@@ -64,7 +64,7 @@ KittenTTS React Native lets you add local speech synthesis to a mobile app:
 - **App-friendly output** - play audio directly, save WAV data, or use generated
   word timings for read-aloud UI.
 - **Three engines, one API** - the 0.8 models and the multilingual Kitten TTS 2
-  Nano, Pico and Mini on the device, and the larger Kitten TTS 2 (voice cloning,
+  Nano, Pico and Mini on the device, and Kitten TTS 2 Cloud (voice cloning,
   expression tags) through the Kitten API. `KittenTTS.create()` picks the engine
   from the model name, as the Python package does.
 
@@ -148,19 +148,20 @@ await tts.speak('This voice is generated in the browser.');
 
 ---
 
-## Kitten TTS 2 Through The Kitten API
+## Kitten TTS 2 Cloud
 
-Kitten TTS 2 is too large to run inside an app, so the SDK runs it on the
-hosted [Kitten API](https://docs.kittenml.com/). It loads through the same
-`KittenTTS.create()` and answers the same calls, like
-`KittenTTS("KittenML/kitten-tts-2")` in the Python package:
+Kitten TTS 2 Cloud, the largest Kitten TTS 2, is too large to run inside an app,
+so the SDK runs it on the hosted [Kitten API](https://docs.kittenml.com/). It
+loads through the same `KittenTTS.create()` and answers the same calls, like
+`KittenTTS("KittenML/kitten-tts-2")` in the Python package (`'kitten-tts-2'`
+works here too):
 
 ```tsx
 import * as ExpoAudio from 'expo-audio';
 import { KittenTTS, createExpoAudioPlayer } from '@kittentts/react-native';
 
 const tts = await KittenTTS.create({
-  model: 'kitten-tts-2',
+  model: 'kitten-tts-2-cloud',
   apiKey: KITTENML_API_KEY, // ship with baseUrl and your own backend instead
   player: createExpoAudioPlayer(ExpoAudio),
 });
@@ -181,7 +182,7 @@ for await (const chunk of tts.generateStreaming(longText, 'bella_en')) {
 and billed to your KittenML account. With an `apiKey` (or `baseUrl`), Nano, Pico
 and Mini run on the API too: `KittenTTS.create({ model: 'kitten-tts-2-nano', apiKey })`.
 
-[Kitten API guide →](docs/guides/kitten-api.md)
+[Kitten TTS 2 Cloud guide →](docs/guides/kitten-api.md)
 
 ---
 
@@ -218,7 +219,7 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 
 - [`examples/ExpoExample`](examples/ExpoExample) - Expo (SDK 58) app with every
   engine: the 0.8 models, Kitten TTS 2 Nano, Pico and Mini on the device, and the
-  Kitten TTS 2 models in the cloud. Runs on iOS, Android and the web.
+  Kitten TTS 2 Cloud models. Runs on iOS, Android and the web.
 - [`examples/BareRNExample`](examples/BareRNExample) - the same app in a bare
   React Native (0.81) project.
 - [`examples/ExpoWordTimingsExample`](examples/ExpoWordTimingsExample) - word
@@ -243,7 +244,7 @@ repository root.
 - [WAV output](docs/reference/api.md#kittenttsresult) as raw PCM samples, bytes, or base64.
 - [Word timings](docs/guides/word-timings.md) for read-aloud highlighting.
 - [Streaming generation](docs/reference/api.md#ttsgeneratestreamingtext-voice-speed) for longer text.
-- [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md), with voice cloning, and Nano, Pico and Mini in the cloud.
+- [Kitten TTS 2 Cloud](docs/guides/kitten-api.md) through the Kitten API, with voice cloning, and Nano, Pico and Mini in the cloud.
 
 ---
 
@@ -293,7 +294,7 @@ await tts.speak('Slower Bruno speaking.', KittenVoice.Bruno, 0.85);
 - [Docs overview](docs/README.md)
 - [Getting started](docs/getting-started.md)
 - [Playback](docs/guides/playback.md)
-- [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md)
+- [Kitten TTS 2 Cloud](docs/guides/kitten-api.md)
 - [Bundled offline assets](docs/guides/offline-assets.md)
 - [Word timings](docs/guides/word-timings.md)
 - [Kitten TTS 2 Nano, Pico and Mini](docs/guides/kitten-tts-2-tiny.md)
@@ -354,5 +355,7 @@ Need something specific? [Open an issue](https://github.com/KittenML/kittentts-r
 Apache 2.0. See [LICENSE](./LICENSE).
 
 The package also ships espeak-ng compiled to JavaScript, which is
-GPL-3.0-or-later and loads only for the Kitten TTS 2 languages other than
-English and Japanese. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+GPL-3.0-or-later, for the Kitten TTS 2 languages other than English and
+Japanese. React Native bundles it
+into every app that uses this package (it runs only for those languages), so an
+app built with it includes GPL-3.0-or-later code. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

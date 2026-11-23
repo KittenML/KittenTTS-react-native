@@ -1,6 +1,6 @@
 {
   "name": "@kittentts/react-native",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "description": "On-device text-to-speech for React Native, powered by KittenTTS + ONNX Runtime",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -55,7 +55,6 @@
     "scripts/patch-onnxruntime-react-native.js",
     "android/",
     "react-native.config.js",
-    "assets/",
     "docs/",
     "README.md",
     "CHANGELOG.md",

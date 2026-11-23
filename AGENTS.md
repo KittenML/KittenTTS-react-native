@@ -23,7 +23,8 @@ Main flow:
 - `src/engineFor.ts`: which engine `KittenTTS.create()` builds from the model, as
   the Python package does: 0.8 on the device, Kitten TTS 2 Nano/Pico/Mini on the
   device (`src/tiny/`), or the Kitten API (`src/api/`, `src/KittenTTS2.ts`) for
-  `kitten-tts-2` and for any Kitten TTS 2 model given an `apiKey` or `baseUrl`.
+  `kitten-tts-2-cloud` / `kitten-tts-2` and for any Kitten TTS 2 model given an
+  `apiKey` or `baseUrl`.
 - `src/KittenTTSConfig.ts`: user config and defaults.
 - `src/*.web.ts`: React Native Web entrypoints and platform-specific browser implementations.
   Each one needs an entry in `package.json` under `browser` (native file to web
@@ -33,7 +34,8 @@ Main flow:
 - `src/KittenTTSError.ts`: SDK error codes and helpers, including `KittenAPIError`
   for the Kitten API.
 - `src/KittenTTS2.ts` / `src/KittenTTS2.web.ts`: Kitten TTS 2 through the hosted
-  Kitten API. `KittenTTS.create()` returns one for `model: 'kitten-tts-2'`. They
+  Kitten API. `KittenTTS.create()` returns one for `model: 'kitten-tts-2-cloud'`
+  (or `'kitten-tts-2'`). They
   only wire in the platform's `AudioOutput` and file reading; the logic is in
   `src/api/KittenTTS2Base.ts` (requests, cloning uploads, voice listing) and
   `src/api/KittenAPI.ts` (fetch, retries, errors), which run in Node so
@@ -60,7 +62,8 @@ Main flow:
   linking off in `react-native.config.js`; its iOS app uses a `SceneDelegate`
   (the iOS 27 SDK requires the scene lifecycle).
 - `examples/ExpoExample/`: Expo SDK 58 example with every engine: 0.8, Kitten TTS
-  2 Nano/Pico/Mini on the device, Kitten TTS 2 in the cloud (key from the app or
+  2 Nano/Pico/Mini on the device, Kitten TTS 2 Cloud and the cloud Nano/Pico/Mini
+  (key from the app or
   `EXPO_PUBLIC_KITTENML_API_KEY`, or `EXPO_PUBLIC_KITTENML_BASE_URL`); iOS,
   Android and web.
 - `examples/ExpoWordTimingsExample/`: Expo SDK 58 word timing example (0.8 and

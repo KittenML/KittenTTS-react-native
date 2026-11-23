@@ -231,6 +231,7 @@ in the Android emulator:
 
 espeak-ng is GPL-3.0-or-later, and its compiled JavaScript
 (`lib/tiny/frontend/espeak/generated/espeakng-runtime.js`) ships in this package.
-It loads only when a language other than English or Japanese is used. UniDic is
+It runs only when a language other than English or Japanese is used, but React
+Native bundles it into every app that uses this package. UniDic is
 BSD-3-Clause / LGPL-2.1 / GPL-2.0; the text data's README lists the licences of
 everything it holds. See [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

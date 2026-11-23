@@ -6,7 +6,7 @@ An Expo (SDK 58) app for `@kittentts/react-native` with every engine the SDK has
 - **TTS 2 on device**: Kitten TTS 2 Nano, Pico and Mini on the device, 8 languages
   (Mini 16), each language's own voices. A language's files download the first
   time it is used.
-- **TTS 2 cloud**: Kitten TTS 2, and Nano, Pico and Mini, on the Kitten API. Needs
+- **TTS 2 cloud**: Kitten TTS 2 Cloud, and Nano, Pico and Mini, on the Kitten API. Needs
   an API key (or your own backend, below).
 
 Pick an engine, a model, a language and a voice, then **Generate** (shows how
@@ -30,7 +30,7 @@ npm install
 npm run ios       # or: npm run android, npm run web
 ```
 
-Until `@kittentts/react-native` 1.3.0 is on npm, or to try changes to the SDK,
+Until `@kittentts/react-native` 2.0.0 is on npm, or to try changes to the SDK,
 install this checkout instead of `npm install`, from the repository root:
 
 ```bash
@@ -85,7 +85,7 @@ const player = createExpoAudioPlayer(ExpoAudio);
 
 const onnx = await KittenTTS.create({ model: KittenModel.NanoInt8, player });            // 0.8
 const tiny = await KittenTTS.create({ model: 'kitten-tts-2-nano', player });              // on device
-const cloud = await KittenTTS.create({ model: 'kitten-tts-2', apiKey, player });          // Kitten API
+const cloud = await KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey, player });    // Kitten API
 
 await onnx.speak('Hello.', KittenVoice.Luna);
 await tiny.speak('Guten Morgen!', { voice: 'Anna', language: 'de' });

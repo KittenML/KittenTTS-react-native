@@ -38,7 +38,7 @@ it returns a `KittenTTS2Tiny` instead: see
 methods (`generate(text, { voice, language, speed })`, `generateStreaming`,
 `generateToFile`, `phonemize`, `voices`, `availableVoices`, `onnxWeights`).
 
-With `model: 'kitten-tts-2'`, or any Kitten TTS 2 model and an `apiKey` or
+With `model: 'kitten-tts-2-cloud'` (or `'kitten-tts-2'`), or any Kitten TTS 2 model and an `apiKey` or
 `baseUrl`, it returns a `KittenTTS2`, which runs on the Kitten API: see the
 [Kitten API guide](../guides/kitten-api.md). The model picks the engine, as in the
 Python package:
@@ -47,7 +47,7 @@ Python package:
 | --- | --- | --- |
 | 0.8 models (default) | `KittenTTS`, on the device | `KittenTTS`, on the device |
 | `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'` | `KittenTTS2Tiny`, on the device | `KittenTTS2`, on the API |
-| `'kitten-tts-2'` | error: it runs on the API only | `KittenTTS2`, on the API |
+| `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`) | error: it runs on the API only | `KittenTTS2`, on the API |
 
 All three have `generate()`, `generateStreaming()`, `speak()`, `play()`,
 `stopSpeaking()` and `dispose()`.
@@ -127,15 +127,15 @@ await tts.play(result, {
 | `wavData()` | Complete 16-bit PCM WAV as `Uint8Array` |
 | `wavBase64()` | Complete WAV as a base64 string |
 
-## Kitten TTS 2: `KittenTTS2`
+## Kitten TTS 2 Cloud: `KittenTTS2`
 
-`KittenTTS.create({ model: 'kitten-tts-2', ... })` returns a `KittenTTS2`:
-Kitten TTS 2 running on the hosted Kitten API, with the same calls as above.
+`KittenTTS.create({ model: 'kitten-tts-2-cloud', ... })` returns a `KittenTTS2`:
+Kitten TTS 2 Cloud (and Nano, Pico and Mini with a key) running on the hosted Kitten API, with the same calls as above.
 See the [Kitten API guide](../guides/kitten-api.md).
 
 ```tsx
 const tts = await KittenTTS.create({
-  model: 'kitten-tts-2',
+  model: 'kitten-tts-2-cloud',
   apiKey: KITTENML_API_KEY,
   player: createExpoAudioPlayer(ExpoAudio),
 });
@@ -146,7 +146,7 @@ await tts.generate('Hello.', { reference: recordingUri, preset: 'stable' });
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `model` | required | `'kitten-tts-2'`, or a Kitten TTS 2 model ID such as `'kitten-tts-2-latest'` |
+| `model` | required | `'kitten-tts-2-cloud'` or `'kitten-tts-2'` (Kitten TTS 2 Cloud), `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'`, or a model ID the API lists, such as `'kitten-tts-2-latest'` |
 | `apiKey` | none | Kitten API key; for development, see the guide |
 | `baseUrl` | `https://api.kittenml.com/v1` | API root, or your own backend that adds the key |
 | `headers` | none | Extra headers sent with every request |

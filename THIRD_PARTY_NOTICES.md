@@ -10,8 +10,9 @@ downloads at run time, the third-party code and data below.
 | [espeak-ng](https://github.com/espeak-ng/espeak-ng) 1.52.0 (commit `4870adfa25b1a32b4361592f1be8a40337c58d6c`, with its ucd-tools), compiled to JavaScript together with `vendor/espeak-ng-bridge/bridge.c` | `lib/tiny/frontend/espeak/generated/espeakng-runtime.js` | GPL-3.0-or-later |
 
 The runtime is built by `scripts/build-espeak-ng.js` from the espeak-ng sources
-at that commit and `vendor/espeak-ng-bridge/`. It loads only when a Kitten TTS 2
-Nano, Pico or Mini model speaks a language other than English or Japanese.
+at that commit and `vendor/espeak-ng-bridge/`. It runs only when a Kitten TTS 2
+Nano, Pico or Mini model speaks a language other than English or Japanese, but
+React Native bundles it into every app that uses this package.
 
 ## Downloaded at run time
 
