@@ -7,6 +7,12 @@ they play. It focuses on Android because iOS builds require macOS.
 KittenTTS does not parse EPUB files. Use an EPUB parser to extract plain chapter
 text, then pass that plain text to KittenTTS.
 
+This tutorial uses the Kitten TTS 0.8 models (`KittenModel.NanoInt8`, English),
+because it relies on two things only the 0.8 `KittenTTS` has: the cache helpers
+(`getModelCacheInfo()`, `redownloadModel()`) and word timings on every
+`generateStreaming()` chunk. [With Kitten TTS 2 Nano](#with-kitten-tts-2-nano),
+at the end, shows what changes for the current models.
+
 ## What You Will Build
 
 You will learn how to build:
@@ -359,6 +365,58 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 - Keep a retry button near setup errors.
 - Let users choose voice and speed before playback.
 - Save progress by chapter, paragraph, and word index.
+
+## With Kitten TTS 2 Nano
+
+The same reader works with Kitten TTS 2 Nano, with these changes:
+
+1. **Prepare the model with `KittenTTS2Tiny.predownload()`.** Kitten TTS 2 has
+   no cache check. `predownload()` downloads what is missing, and nothing when
+   the files are already there, so calling it again is also the retry.
+
+   ```tsx
+   import { KittenTTS, KittenTTS2Tiny } from '@kittentts/react-native';
+
+   await KittenTTS2Tiny.predownload(
+     { model: 'kitten-tts-2-nano', languages: ['en'] },
+     (progress, info) => {
+       if (info?.stage === 'downloading') {
+         setSetupText(`Downloading ${Math.round(progress * 100)}%`);
+       }
+     },
+   );
+
+   const tts = await KittenTTS.create({ model: 'kitten-tts-2-nano', languages: ['en'], player });
+   ```
+
+2. **Generate each reader chunk with `generate()`.** With Kitten TTS 2 Nano,
+   `generateStreaming()` chunks carry no word timings. `generate()` returns
+   `wordTimings` for the whole chunk, so generate the paragraphs and sections
+   from above one at a time:
+
+   ```tsx
+   async function readChunks(tts: KittenTTS2Tiny, chunks: string[]) {
+     for (const chunk of chunks) {
+       const result = await tts.generate(chunk, { voice: 'Eleanor' });
+       setCurrentResult(result);
+
+       await tts.play(result, {
+         onPlaybackStart: () => startWordHighlighting(result),
+       });
+     }
+   }
+   ```
+
+   To avoid a pause between chunks, start generating the next chunk before
+   waiting for the current one to finish playing.
+
+3. **Voices are names per language** (`tts.availableVoices.en`: `'Eleanor'`,
+   `'Otis'`, ...), and results are `KittenTTSResult<string>`: type the
+   highlighter's parameter as `KittenTTSResult<string>`.
+
+For books in German, French or the other languages that go through espeak-ng,
+install and import `@kittentts/espeak-ng`; see
+[Getting started](../../getting-started.md#other-languages).
 
 ## Related Docs
 

@@ -1,27 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as ExpoAudio from 'expo-audio';
-import { StatusBar } from 'expo-status-bar';
-import {
-  ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   KittenModel,
   KittenTTS,
+  KittenTTS2Tiny,
   KittenVoice,
   bundledAssetModels,
+  bundledTinyModels,
   createBundledAssetConfig,
+  createBundledTinyOptions,
   createExpoAudioPlayer,
   modelDisplayName,
   type KittenTTSBundledAssetsManifest,
 } from '@kittentts/react-native';
+import { Button, Card, Field, Row, Screen, Segmented, Status, TextArea } from './components/ui';
 import manifestJson from './assets/kittentts/manifest.json';
 
+// Written by `npm run bundle:kittentts`: a Kitten TTS 2 model and a 0.8 model, which
+// load from the app's own files, with no network.
 const manifest = manifestJson as KittenTTSBundledAssetsManifest;
 
 type WorkState =
@@ -30,34 +27,64 @@ type WorkState =
   | { kind: 'speaking' }
   | { kind: 'error'; message: string };
 
-export default function App() {
-  const ttsRef = useRef<KittenTTS | null>(null);
-  const mountedRef = useRef(true);
-  const player = useMemo(() => createExpoAudioPlayer(ExpoAudio), []);
-  const models = useMemo(() => bundledAssetModels(manifest), []);
-  const [model, setModel] = useState<KittenModel>(models[0] ?? KittenModel.NanoInt8);
-  const [state, setState] = useState<WorkState>({ kind: 'preparing' });
+interface Entry {
+  id: string;
+  label: string;
+  kind: 'onnx' | 'tiny';
+}
 
-  const prepare = useCallback(async (nextModel: KittenModel) => {
+function bundledModels(): Entry[] {
+  const tiny = bundledTinyModels(manifest).map(id => ({
+    id: id as string,
+    label: `TTS 2 ${id.replace('kitten-tts-2-', '').replace(/^./, c => c.toUpperCase())}`,
+    kind: 'tiny' as const,
+  }));
+  const onnx = bundledAssetModels(manifest).map(id => ({ id: id as string, label: `0.8 ${modelDisplayName(id)}`, kind: 'onnx' as const }));
+  return [...tiny, ...onnx];
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Bundled />
+    </SafeAreaProvider>
+  );
+}
+
+function Bundled() {
+  const ttsRef = useRef<KittenTTS | KittenTTS2Tiny | null>(null);
+  const mountedRef = useRef(true);
+  const loadIdRef = useRef(0);
+  const player = useMemo(() => createExpoAudioPlayer(ExpoAudio), []);
+  const models = useMemo(bundledModels, []);
+  const [model, setModel] = useState<string>(models[0]?.id ?? KittenModel.NanoInt8);
+  const [state, setState] = useState<WorkState>({ kind: 'preparing' });
+  const [text, setText] = useState('KittenTTS is running from files bundled inside this app.');
+
+  const prepare = useCallback(async (next: Entry) => {
+    const loadId = ++loadIdRef.current;
     setState({ kind: 'preparing' });
     try {
-      await ttsRef.current?.dispose();
-      const config = await createBundledAssetConfig(manifest, {
-        model: nextModel,
-        defaultVoice: KittenVoice.Bella,
-      });
-      const tts = await KittenTTS.create({ ...config, player });
-
-      if (!mountedRef.current) {
+      const previous = ttsRef.current;
+      ttsRef.current = null;
+      await previous?.dispose();
+      const tts = next.kind === 'tiny'
+        ? await KittenTTS.create({
+          ...(await createBundledTinyOptions(manifest, { model: next.id as 'kitten-tts-2-nano' })),
+          player,
+        })
+        : await KittenTTS.create({
+          ...(await createBundledAssetConfig(manifest, { model: next.id, defaultVoice: KittenVoice.Bella })),
+          player,
+        });
+      if (!mountedRef.current || loadId !== loadIdRef.current) {
         await tts.dispose();
         return;
       }
-
       ttsRef.current = tts;
       setState({ kind: 'ready' });
     } catch (error) {
-      if (mountedRef.current) {
-        ttsRef.current = null;
+      if (mountedRef.current && loadId === loadIdRef.current) {
         setState({ kind: 'error', message: errorMessage(error) });
       }
     }
@@ -65,158 +92,76 @@ export default function App() {
 
   useEffect(() => {
     mountedRef.current = true;
-    prepare(model);
+    if (models[0]) prepare(models[0]);
+    else setState({ kind: 'error', message: 'No bundled models. Run npm run bundle:kittentts, then rebuild.' });
     return () => {
       mountedRef.current = false;
       ttsRef.current?.dispose().catch(() => {});
       ttsRef.current = null;
     };
-  }, [model, prepare]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const select = (id: string) => {
+    setModel(id);
+    prepare(models.find(m => m.id === id)!);
+  };
 
   const speak = useCallback(async () => {
     const tts = ttsRef.current;
-    if (!tts) return;
-
+    if (!tts || !text.trim()) return;
     setState({ kind: 'speaking' });
     try {
-      await tts.speak('KittenTTS is running from bundled app assets.');
+      await tts.speak(text);
       setState({ kind: 'ready' });
     } catch (error) {
       setState({ kind: 'error', message: errorMessage(error) });
     }
+  }, [text]);
+
+  const stop = useCallback(() => {
+    ttsRef.current?.stopSpeaking().catch(() => {});
   }, []);
 
   const busy = state.kind === 'preparing' || state.kind === 'speaking';
+  const current = models.find(m => m.id === model);
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Bundled KittenTTS</Text>
-        <Text style={styles.subtitle}>{statusText(state)}</Text>
+    <Screen
+      title="Offline"
+      description="These models ship inside the app, so they start with no download and work with no network."
+      badge="Offline"
+    >
+      <Card>
+        <Field label="Bundled model" hint={state.kind === 'error' ? 'Tap the model again to retry.' : undefined}>
+          <Segmented
+            value={model}
+            options={models.map(m => ({ value: m.id, label: m.label }))}
+            onChange={select}
+            disabled={busy}
+          />
+        </Field>
+        {state.kind === 'preparing'
+          ? <Status kind="loading" text="Loading from the app bundle..." />
+          : state.kind === 'error'
+            ? <Status kind="error" text={state.message} />
+            : <Status kind={state.kind === 'speaking' ? 'loading' : 'ready'} text={state.kind === 'speaking' ? 'Speaking...' : `${current?.kind === 'tiny' ? 'Kitten TTS 2' : 'Kitten TTS 0.8'} is ready, offline`} />}
+      </Card>
 
-        {busy ? <ActivityIndicator color="#2563EB" /> : null}
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Bundled model</Text>
-          <View style={styles.modelGrid}>
-            {models.map((candidate) => (
-              <TouchableOpacity
-                key={candidate}
-                style={[
-                  styles.modelButton,
-                  candidate === model && styles.modelButtonSelected,
-                  busy && styles.disabled,
-                ]}
-                disabled={busy}
-                onPress={() => setModel(candidate)}
-              >
-                <Text
-                  style={[
-                    styles.modelButtonText,
-                    candidate === model && styles.modelButtonTextSelected,
-                  ]}
-                >
-                  {modelDisplayName(candidate)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.speakButton, state.kind !== 'ready' && styles.disabled]}
-          disabled={state.kind !== 'ready'}
-          onPress={speak}
-        >
-          <Text style={styles.speakButtonText}>Speak</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+      <Card>
+        <Field label="Text">
+          <TextArea value={text} onChangeText={setText} editable={!busy} placeholder="Type something to say" />
+        </Field>
+        <Row>
+          {state.kind === 'speaking'
+            ? <Button title="Stop" icon="stop" onPress={stop} />
+            : <Button title="Speak" icon="play" disabled={state.kind !== 'ready' || !text.trim()} onPress={speak} />}
+        </Row>
+      </Card>
+    </Screen>
   );
-}
-
-function statusText(state: WorkState): string {
-  switch (state.kind) {
-    case 'preparing':
-      return 'Loading bundled assets...';
-    case 'ready':
-      return 'Ready';
-    case 'speaking':
-      return 'Speaking...';
-    case 'error':
-      return state.message;
-  }
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F7F7F8',
-  },
-  content: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    gap: 18,
-    padding: 24,
-  },
-  title: {
-    color: '#111827',
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: '#4B5563',
-    lineHeight: 20,
-  },
-  section: {
-    gap: 10,
-  },
-  label: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  modelGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  modelButton: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  modelButtonSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#DBEAFE',
-  },
-  modelButtonText: {
-    color: '#374151',
-    fontWeight: '700',
-  },
-  modelButtonTextSelected: {
-    color: '#1D4ED8',
-  },
-  speakButton: {
-    alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: '#2563EB',
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-  },
-  speakButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  disabled: {
-    opacity: 0.45,
-  },
-});

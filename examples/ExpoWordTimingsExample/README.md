@@ -1,9 +1,11 @@
 # KittenTTS Expo Word Timings Example
 
-Expo SDK 55 development-build example created with `create-expo-app`.
-This app showcases `KittenTTSResult.wordTimings` by generating audio and
-displaying each word's start and end time. It also shows how to start
-highlighting only after playback begins.
+Expo SDK 58 development-build example. This app showcases
+`KittenTTSResult.wordTimings` by generating audio and displaying each word's
+start and end time. It also shows how to start highlighting only after playback
+begins. Pick Kitten TTS 2 Nano (the default), Pico or Mini, or the 0.8 Nano
+int8 model: every on-device model returns word timings (the cloud models do
+not). The text is English, so the app does not need `@kittentts/espeak-ng`.
 
 Expo Go will not work for this app because `@kittentts/react-native` depends on
 native modules for ONNX Runtime and filesystem access.
@@ -43,6 +45,13 @@ cd examples/ExpoWordTimingsExample
 npm start -- --clear
 ```
 
+Until `@kittentts/react-native` 2.0.0 is on npm, or to try changes to the SDK,
+install this checkout instead of `npm install`, from the repository root:
+
+```bash
+npm run example:install -- ExpoWordTimingsExample
+```
+
 ## Build A Debug APK
 
 The APK will be written under `android/app/build/outputs/apk/debug/`.
@@ -61,16 +70,15 @@ assembleDebug` inside the `android` folder.
 ## Notes
 
 Tap **Generate** to inspect word-level timestamps without playback, or **Speak**
-to generate, play, and show the same timing metadata. The first app run
-downloads the Nano int8 model and phonemizer data. Later runs reuse the local
-cache.
+to generate, play (with **Stop**), and show the same timing metadata. Choosing a
+model downloads it the first time; later runs reuse the local cache.
 
 ## What To Copy Into Your App
 
 Use this flow when you want synced word highlighting:
 
 ```typescript
-const result = await tts.generate(text, voice);
+const result = await tts.generate(text, voice); // 'Eleanor' for Kitten TTS 2, a KittenVoice for 0.8
 setResult(result);
 
 await tts.play(result, {
@@ -81,13 +89,20 @@ await tts.play(result, {
 The example's `startWordHighlighting()` reads `result.wordTimings` and compares
 each word's `startTime` / `endTime` against the playback timer.
 
-For long documents, generate smaller chunks instead of one large string:
+For long documents, generate smaller chunks instead of one large string, and
+highlight each as it plays:
 
 ```typescript
-for await (const chunk of tts.generateStreaming(longText, voice)) {
-  await tts.play(chunk);
+for (const paragraph of paragraphs) {
+  const result = await tts.generate(paragraph, voice);
+  await tts.play(result, {
+    onPlaybackStart: () => startWordHighlighting(result),
+  });
 }
 ```
+
+`generateStreaming()` starts sooner, but with Kitten TTS 2 Nano, Pico and Mini
+its chunks carry no word timings (the 0.8 models' sentence chunks do).
 
 This is the recommended starting point for EPUB readers, articles, and other
 long-form text. Build your own queue if you need pause, resume, chapter state,

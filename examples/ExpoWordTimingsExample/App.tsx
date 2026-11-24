@@ -1,111 +1,140 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ExpoAudio from 'expo-audio';
 import {
   KittenModel,
   KittenTTS,
-  KittenTTSResult,
+  KittenTTS2Tiny,
   KittenTTSErrorCode,
   KittenVoice,
+  createBrowserAudioPlayer,
   createExpoAudioPlayer,
   isKittenTTSError,
-  modelDisplayName,
   voiceDisplayName,
 } from '@kittentts/react-native';
-import type { KittenWordTiming } from '@kittentts/react-native';
+import type { KittenTTSResult, KittenWordTiming } from '@kittentts/react-native';
+import { Button, Card, Field, Row, Screen, Select, Stats, Status, TextArea, useUI } from './components/ui';
+
+type AnyTTS = KittenTTS | KittenTTS2Tiny;
+
+// Every on-device model returns word timings: Kitten TTS 2 Nano, Pico and Mini and
+// the 0.8 models. (The cloud models don't.)
+const MODELS = [
+  { value: 'kitten-tts-2-nano', label: 'TTS 2 Nano', description: 'Kitten TTS 2 Nano, 8 languages' },
+  { value: 'kitten-tts-2-pico', label: 'TTS 2 Pico', description: 'Kitten TTS 2 Pico, the fastest' },
+  { value: 'kitten-tts-2-mini', label: 'TTS 2 Mini', description: 'Kitten TTS 2 Mini, the best' },
+  { value: KittenModel.NanoInt8 as string, label: '0.8 Nano', description: 'Kitten TTS 0.8 Nano int8, English, 28 MB' },
+];
+const VOICES_08 = [KittenVoice.Bella, KittenVoice.Luna, KittenVoice.Jasper, KittenVoice.Leo];
 
 type Status =
-  | { kind: 'idle'; message: string }
-  | { kind: 'preparing' }
-  | { kind: 'loading'; progress: number }
-  | { kind: 'working'; message: string }
+  | { kind: 'ready' }
+  | { kind: 'loading'; progress?: number }
+  | { kind: 'generating' }
+  | { kind: 'playing' }
   | { kind: 'error'; message: string };
 
-const MODEL = KittenModel.NanoInt8;
-const VOICES = [
-  KittenVoice.Bella,
-  KittenVoice.Luna,
-  KittenVoice.Jasper,
-  KittenVoice.Leo,
-];
-
 export default function App() {
-  const [text, setText] = useState(
-    'KittenTTS runs fully on device and now returns word-level timestamps. Generate this paragraph to see when each word starts and ends in the audio.',
+  return (
+    <SafeAreaProvider>
+      <WordTimings />
+    </SafeAreaProvider>
   );
-  const [voice, setVoice] = useState(KittenVoice.Bella);
-  const [status, setStatus] = useState<Status>({
-    kind: 'idle',
-    message: 'Ready to load the model.',
-  });
-  const [result, setResult] = useState<KittenTTSResult | null>(null);
-  const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
-  const ttsRef = useRef<KittenTTS | null>(null);
-  const highlightTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const player = useMemo(() => createExpoAudioPlayer(ExpoAudio), []);
+}
 
-  const busy = status.kind === 'preparing' || status.kind === 'loading' || status.kind === 'working';
+function WordTimings() {
+  const [text, setText] = useState(
+    'KittenTTS runs fully on device and returns word-level timestamps. Speak this paragraph to see when each word starts and ends in the audio.',
+  );
+  const [model, setModel] = useState(MODELS[0].value);
+  const [voices, setVoices] = useState<{ value: string; label: string }[]>([]);
+  const [voice, setVoice] = useState('');
+  const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  const [result, setResult] = useState<KittenTTSResult<string> | null>(null);
+  const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
+  const ttsRef = useRef<AnyTTS | null>(null);
+  const loadIdRef = useRef(0);
+  const highlightTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const player = useMemo(
+    () => (Platform.OS === 'web' ? createBrowserAudioPlayer() : createExpoAudioPlayer(ExpoAudio)),
+    [],
+  );
+
+  const busy = status.kind !== 'ready' && status.kind !== 'error';
+
+  const load = useCallback(async (nextModel: string) => {
+    const loadId = ++loadIdRef.current;
+    setResult(null);
+    const previous = ttsRef.current;
+    ttsRef.current = null;
+    await previous?.dispose().catch(() => {});
+    setStatus({ kind: 'loading' });
+    try {
+      const onProgress = (progress: number, info?: { stage?: string }) => {
+        if (loadId === loadIdRef.current) {
+          setStatus({ kind: 'loading', progress: info?.stage === 'downloading' ? progress : undefined });
+        }
+      };
+      const instance: AnyTTS = nextModel.startsWith('kitten-tts-2')
+        ? await KittenTTS.create({ model: nextModel as 'kitten-tts-2-nano', player }, onProgress)
+        : await KittenTTS.create({ model: nextModel as KittenModel, player }, onProgress);
+      if (loadId !== loadIdRef.current) {
+        await instance.dispose();
+        return;
+      }
+      // English voices, since the text is English.
+      const list = instance instanceof KittenTTS2Tiny
+        ? instance.voices('en').map(v => ({ value: v.name, label: v.name }))
+        : VOICES_08.map(v => ({ value: v as string, label: voiceDisplayName(v) }));
+      ttsRef.current = instance;
+      setVoices(list);
+      setVoice(list[0]?.value ?? '');
+      setStatus({ kind: 'ready' });
+    } catch (error) {
+      if (loadId === loadIdRef.current) setStatus({ kind: 'error', message: friendlyError(error) });
+    }
+  }, [player]);
 
   useEffect(() => {
+    load(MODELS[0].value);
     return () => {
-      if (highlightTimerRef.current) {
-        clearInterval(highlightTimerRef.current);
-        highlightTimerRef.current = null;
-      }
+      stopWordHighlighting();
+      loadIdRef.current += 1;
+      // Fast Refresh can tear down the JS runtime while ONNX native objects are
+      // still active, so avoid releasing the session during dev reloads.
+      if (!__DEV__) ttsRef.current?.dispose().catch(() => {});
+      ttsRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function getTTS(): Promise<KittenTTS> {
-    if (ttsRef.current) return ttsRef.current;
+  function selectModel(next: string) {
+    setModel(next);
+    load(next);
+  }
 
-    setStatus({ kind: 'preparing' });
-    const cached = await KittenTTS.isModelDownloaded({ model: MODEL });
-    const instance = await KittenTTS.create(
-      { model: MODEL, defaultVoice: voice, player },
-      (progress, info) => {
-        if (info?.stage === 'downloading') {
-          setStatus({ kind: 'loading', progress });
-        }
-      },
-    );
-
-    ttsRef.current = instance;
-    setStatus({
-      kind: 'idle',
-      message: cached ? 'Loaded from cache.' : 'Downloaded and loaded.',
-    });
-    return instance;
+  function generate(tts: AnyTTS): Promise<KittenTTSResult<string>> {
+    return tts instanceof KittenTTS2Tiny
+      ? tts.generate(text, { voice, language: 'en' })
+      : tts.generate(text, voice as KittenVoice);
   }
 
   async function speak() {
-    if (!text.trim()) {
-      setStatus({ kind: 'error', message: 'Enter text before speaking.' });
-      return;
-    }
-
+    const tts = ttsRef.current;
+    if (!tts || !text.trim()) return;
     try {
       setResult(null);
       setActiveWordIndex(null);
-      const tts = await getTTS();
-      setStatus({ kind: 'working', message: 'Generating audio...' });
-      const nextResult = await tts.generate(text, voice);
+      setStatus({ kind: 'generating' });
+      const nextResult = await generate(tts);
       setResult(nextResult);
-      setStatus({ kind: 'working', message: 'Playing with word highlighting...' });
+      setStatus({ kind: 'playing' });
       await tts.play(nextResult, {
         onPlaybackStart: () => startWordHighlighting(nextResult),
       });
       stopWordHighlighting();
-      setStatus({ kind: 'idle', message: 'Playback finished.' });
+      setStatus({ kind: 'ready' });
     } catch (error) {
       stopWordHighlighting();
       setStatus({ kind: 'error', message: friendlyError(error) });
@@ -113,112 +142,28 @@ export default function App() {
   }
 
   async function generateOnly() {
-    if (!text.trim()) {
-      setStatus({ kind: 'error', message: 'Enter text before generating.' });
-      return;
-    }
-
+    const tts = ttsRef.current;
+    if (!tts || !text.trim()) return;
     try {
       setResult(null);
       setActiveWordIndex(null);
-      const tts = await getTTS();
-      setStatus({ kind: 'working', message: 'Generating audio...' });
-      const nextResult = await tts.generate(text, voice);
-      setResult(nextResult);
-      setStatus({ kind: 'idle', message: 'Generated audio with word timings.' });
+      setStatus({ kind: 'generating' });
+      setResult(await generate(tts));
+      setStatus({ kind: 'ready' });
     } catch (error) {
       setStatus({ kind: 'error', message: friendlyError(error) });
     }
   }
 
-  return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Word Timings</Text>
-          <Text style={styles.subtitle}>
-            Expo SDK 55 development-build demo. Expo Go will not work.
-          </Text>
-        </View>
+  function stop() {
+    ttsRef.current?.stopSpeaking().catch(() => {});
+  }
 
-        <View style={styles.panel}>
-          <Text style={styles.label}>Model</Text>
-          <Text style={styles.value}>{modelDisplayName(MODEL)}</Text>
-        </View>
-
-        <View style={styles.panel}>
-          <Text style={styles.label}>Text</Text>
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            editable={!busy}
-            multiline
-            placeholder="Type a sentence"
-            placeholderTextColor="#777"
-            style={styles.input}
-          />
-        </View>
-
-        <View style={styles.panel}>
-          <Text style={styles.label}>Voice</Text>
-          <View style={styles.options}>
-            {VOICES.map((item) => (
-              <Pressable
-                key={item}
-                disabled={busy}
-                onPress={() => setVoice(item)}
-                style={[styles.option, voice === item && styles.optionSelected]}
-              >
-                <Text
-                  style={[
-                    styles.optionText,
-                    voice === item && styles.optionTextSelected,
-                  ]}
-                >
-                  {voiceDisplayName(item)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        <StatusView status={status} />
-
-        <View style={styles.actions}>
-          <Pressable
-            disabled={busy}
-            onPress={generateOnly}
-            style={[styles.button, busy && styles.buttonDisabled]}
-          >
-            <Text style={styles.buttonText}>Generate</Text>
-          </Pressable>
-          <Pressable
-            disabled={busy}
-            onPress={speak}
-            style={[styles.button, styles.primaryButton, busy && styles.buttonDisabled]}
-          >
-            <Text style={[styles.buttonText, styles.primaryButtonText]}>
-              Speak
-            </Text>
-          </Pressable>
-        </View>
-
-        {result ? (
-          <ResultCard result={result} activeWordIndex={activeWordIndex} />
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
-  );
-
-  function startWordHighlighting(nextResult: KittenTTSResult) {
+  function startWordHighlighting(nextResult: KittenTTSResult<string>) {
     stopWordHighlighting();
     const wordTimings = nextResult.wordTimings;
-
     if (wordTimings.length === 0) return;
-
     const startedAt = Date.now();
-    setActiveWordIndex(null);
     highlightTimerRef.current = setInterval(() => {
       const elapsedSeconds = (Date.now() - startedAt) / 1000;
       const active = wordTimings.find(
@@ -235,352 +180,141 @@ export default function App() {
     }
     setActiveWordIndex(null);
   }
-}
 
-function ResultCard({
-  result,
-  activeWordIndex,
-}: {
-  result: KittenTTSResult;
-  activeWordIndex: number | null;
-}) {
-  const wordTimings: KittenWordTiming[] = result.wordTimings;
-  const timings = wordTimings.slice(0, 24);
-  const transcriptWords = wordTimings.slice(0, 80);
+  const ready = status.kind === 'ready' && !!ttsRef.current && !!text.trim();
 
   return (
-    <View style={styles.result}>
-      <Text style={styles.resultTitle}>Generated Result</Text>
-      <View style={styles.resultGrid}>
-        <View>
-          <Text style={styles.resultLabel}>Duration</Text>
-          <Text style={styles.resultValue}>{result.duration.toFixed(2)}s</Text>
-        </View>
-        <View>
-          <Text style={styles.resultLabel}>Words timed</Text>
-          <Text style={styles.resultValue}>{wordTimings.length}</Text>
-        </View>
-      </View>
+    <Screen
+      title="Word timings"
+      description="Hear the text and follow each word as it is spoken. Every on-device model returns word timings."
+      badge="Expo"
+    >
+      <Card>
+        <Row>
+          <Field label="Model" style={{ flex: 1 }}>
+            <Select title="Model" value={model} groups={[{ options: MODELS }]} onChange={selectModel} disabled={busy} />
+          </Field>
+          <Field label="Voice" style={{ flex: 1 }}>
+            <Select title="Voice" value={voice} groups={[{ options: voices }]} onChange={setVoice} disabled={busy || voices.length === 0} />
+          </Field>
+        </Row>
+        <StatusLine status={status} />
+      </Card>
 
-      <Text style={styles.timingsTitle}>Word timings</Text>
-      {timings.length > 0 ? (
+      <Card>
+        <Field label="Text">
+          <TextArea value={text} onChangeText={setText} editable={!busy} placeholder="Type a sentence" />
+        </Field>
+        <Row>
+          {status.kind === 'playing'
+            ? <Button title="Stop" icon="stop" onPress={stop} />
+            : <Button title="Speak" icon="play" disabled={!ready} onPress={speak} />}
+          <Button title="Generate" variant="outline" loading={status.kind === 'generating'} disabled={!ready} onPress={generateOnly} />
+        </Row>
+      </Card>
+
+      {result ? <Transcript result={result} activeWordIndex={activeWordIndex} /> : null}
+    </Screen>
+  );
+}
+
+function StatusLine({ status }: { status: Status }) {
+  switch (status.kind) {
+    case 'loading':
+      return status.progress !== undefined
+        ? <Status kind="loading" text={`Downloading the model, ${Math.round(status.progress * 100)}%`} progress={status.progress} />
+        : <Status kind="loading" text="Loading the model..." />;
+    case 'generating':
+      return <Status kind="loading" text="Generating..." />;
+    case 'playing':
+      return <Status kind="loading" text="Speaking..." />;
+    case 'error':
+      return <Status kind="error" text={status.message} />;
+    default:
+      return <Status kind="ready" text="Ready, on this device" />;
+  }
+}
+
+function Transcript({ result, activeWordIndex }: { result: KittenTTSResult<string>; activeWordIndex: number | null }) {
+  const { t, s } = useUI();
+  const [showAll, setShowAll] = useState(false);
+  const words: KittenWordTiming[] = result.wordTimings;
+  const rows = showAll ? words : words.slice(0, 6);
+
+  return (
+    <Card title="Transcript" description="The word being spoken is highlighted.">
+      <Stats
+        items={[
+          { label: 'Audio', value: `${result.duration.toFixed(2)} s` },
+          { label: 'Words timed', value: String(words.length) },
+        ]}
+      />
+      {words.length > 0 ? (
         <>
-          <Text style={styles.transcript}>
-            {transcriptWords.map((item, index) => (
-              <Text
-                key={`transcript-${item.wordIndex}-${item.word}`}
-                style={[
-                  styles.transcriptWord,
-                  activeWordIndex === item.wordIndex && styles.transcriptWordActive,
-                ]}
-              >
-                {item.word}
-                {index < transcriptWords.length - 1 ? ' ' : ''}
-              </Text>
-            ))}
-          </Text>
-
-          <View style={styles.timingList}>
-            {timings.map((item) => (
-              <View
-                key={`${item.wordIndex}-${item.word}`}
-                style={[
-                  styles.timingRow,
-                  activeWordIndex === item.wordIndex && styles.timingRowActive,
-                ]}
-              >
+          <Text style={[s.description, local.transcript]}>
+            {words.map((item, index) => {
+              const active = activeWordIndex === item.wordIndex;
+              return (
                 <Text
-                  style={[
-                    styles.timingWord,
-                    activeWordIndex === item.wordIndex && styles.timingWordActive,
-                  ]}
+                  key={`${item.wordIndex}-${item.word}`}
+                  style={[{ color: t.foreground }, active && { backgroundColor: t.primary, color: t.primaryForeground }]}
                 >
                   {item.word}
+                  {index < words.length - 1 ? ' ' : ''}
                 </Text>
-                <Text
-                  style={[
-                    styles.timingTime,
-                    activeWordIndex === item.wordIndex && styles.timingTimeActive,
-                  ]}
-                >
-                  {item.startTime.toFixed(2)}s - {item.endTime.toFixed(2)}s
+              );
+            })}
+          </Text>
+          <View style={[local.table, { borderColor: t.border }]}>
+            {rows.map((item, index) => (
+              <View
+                key={`${item.wordIndex}-${item.word}-row`}
+                style={[local.tableRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border },
+                  activeWordIndex === item.wordIndex && { backgroundColor: t.muted }]}
+              >
+                <Text style={[local.word, { color: t.foreground }]} numberOfLines={1}>{item.word}</Text>
+                <Text style={[local.time, { color: t.mutedForeground }]}>
+                  {item.startTime.toFixed(2)} – {item.endTime.toFixed(2)} s
                 </Text>
               </View>
             ))}
           </View>
+          {words.length > 6 ? (
+            <Button
+              title={showAll ? 'Show fewer' : `Show all ${words.length} words`}
+              variant="ghost"
+              onPress={() => setShowAll(!showAll)}
+              style={{ flex: 0 }}
+            />
+          ) : null}
         </>
       ) : (
-        <Text style={styles.emptyTimings}>
-          No word timings returned for this text. Try a shorter sentence or
-          confirm this model build includes duration output.
-        </Text>
+        <Text style={s.hint}>No word timings came back for this text.</Text>
       )}
-    </View>
+    </Card>
   );
 }
 
-function StatusView({ status }: { status: Status }) {
-  if (status.kind === 'preparing') {
-    return (
-      <View style={styles.status}>
-        <ActivityIndicator />
-        <Text style={styles.statusText}>Preparing assets...</Text>
-      </View>
-    );
-  }
-
-  if (status.kind === 'loading') {
-    return (
-      <View style={styles.status}>
-        <ActivityIndicator />
-        <Text style={styles.statusText}>
-          Downloading assets... {Math.round(status.progress * 100)}%
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.status, status.kind === 'error' && styles.errorStatus]}>
-      <Text
-        style={[
-          styles.statusText,
-          status.kind === 'error' && styles.errorStatusText,
-        ]}
-      >
-        {status.message}
-      </Text>
-    </View>
-  );
-}
+const local = StyleSheet.create({
+  transcript: { fontSize: 17, lineHeight: 28 },
+  table: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  tableRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 9, gap: 12 },
+  word: { fontSize: 14, fontWeight: '500', flexShrink: 1 },
+  time: { fontSize: 13, fontVariant: ['tabular-nums'] },
+});
 
 function friendlyError(error: unknown): string {
   if (!isKittenTTSError(error)) {
     return error instanceof Error ? error.message : String(error);
   }
-
   switch (error.code) {
     case KittenTTSErrorCode.DownloadFailed:
       return 'Download failed. Check your connection and try again.';
     case KittenTTSErrorCode.PlaybackFailed:
-      return 'Playback failed. Make sure the dev build includes expo-audio.';
+      return 'Playback failed. Make sure the development build includes expo-audio.';
     case KittenTTSErrorCode.EmptyInput:
       return 'Enter text before generating speech.';
     default:
       return error.message;
   }
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F6F7F9',
-  },
-  content: {
-    gap: 16,
-    padding: 20,
-  },
-  header: {
-    gap: 6,
-    paddingTop: 12,
-  },
-  title: {
-    color: '#111827',
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: '#5B6472',
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  panel: {
-    gap: 10,
-  },
-  label: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  value: {
-    color: '#111827',
-    fontSize: 17,
-  },
-  input: {
-    minHeight: 110,
-    borderColor: '#D5DAE1',
-    borderRadius: 8,
-    borderWidth: 1,
-    color: '#111827',
-    fontSize: 16,
-    lineHeight: 22,
-    padding: 12,
-    textAlignVertical: 'top',
-    backgroundColor: '#FFFFFF',
-  },
-  options: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  option: {
-    borderColor: '#CAD1DB',
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    backgroundColor: '#FFFFFF',
-  },
-  optionSelected: {
-    borderColor: '#1F6FEB',
-    backgroundColor: '#EAF2FF',
-  },
-  optionText: {
-    color: '#1F2937',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  optionTextSelected: {
-    color: '#174EA6',
-  },
-  status: {
-    alignItems: 'center',
-    borderColor: '#D5DAE1',
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
-    minHeight: 48,
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  errorStatus: {
-    borderColor: '#F2B8B5',
-    backgroundColor: '#FFF1F1',
-  },
-  statusText: {
-    color: '#344054',
-    flex: 1,
-    fontSize: 14,
-  },
-  errorStatusText: {
-    color: '#B42318',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  button: {
-    alignItems: 'center',
-    borderColor: '#1F2937',
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 48,
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    backgroundColor: '#FFFFFF',
-  },
-  primaryButton: {
-    borderColor: '#1F6FEB',
-    backgroundColor: '#1F6FEB',
-  },
-  buttonDisabled: {
-    opacity: 0.55,
-  },
-  buttonText: {
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-  },
-  result: {
-    borderColor: '#D5DAE1',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 14,
-    padding: 14,
-    backgroundColor: '#FFFFFF',
-  },
-  resultTitle: {
-    color: '#111827',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  resultGrid: {
-    flexDirection: 'row',
-    gap: 28,
-  },
-  resultLabel: {
-    color: '#5B6472',
-    fontSize: 13,
-  },
-  resultValue: {
-    color: '#111827',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  timingsTitle: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  transcript: {
-    color: '#111827',
-    fontSize: 16,
-    lineHeight: 30,
-  },
-  transcriptWord: {
-    color: '#111827',
-  },
-  transcriptWordActive: {
-    backgroundColor: '#1F6FEB',
-    color: '#FFFFFF',
-    fontWeight: '800',
-  },
-  timingList: {
-    gap: 6,
-  },
-  timingRow: {
-    alignItems: 'center',
-    borderColor: '#E4E7EC',
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  timingRowActive: {
-    borderColor: '#1F6FEB',
-    backgroundColor: '#EAF2FF',
-  },
-  timingWord: {
-    color: '#111827',
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  timingWordActive: {
-    color: '#174EA6',
-  },
-  timingTime: {
-    color: '#475467',
-    fontSize: 13,
-    fontVariant: ['tabular-nums'],
-  },
-  timingTimeActive: {
-    color: '#174EA6',
-    fontWeight: '700',
-  },
-  emptyTimings: {
-    color: '#667085',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-});

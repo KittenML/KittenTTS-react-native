@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "bundle:kittentts": "kittentts-react-native bundle-assets --models nano-int8 --out assets/kittentts",
+    "bundle:kittentts": "kittentts-react-native bundle-assets --models nano-int8,kitten-tts-2-nano --languages en --out assets/kittentts",
     "bundle:kittentts:all": "kittentts-react-native bundle-assets --all --out assets/kittentts",
     "start": "expo start --dev-client",
     "android": "expo run:android",
@@ -13,19 +13,33 @@
     "web": "expo start --web"
   },
   "dependencies": {
-    "@kittentts/react-native": "^1.1.0",
-    "expo": "~54.0.33",
-    "expo-audio": "~1.1.1",
-    "expo-build-properties": "~1.0.10",
-    "expo-dev-client": "~6.0.21",
-    "expo-status-bar": "~3.0.9",
-    "react": "19.1.0",
-    "react-native": "0.81.5",
-    "react-native-fs": "npm:@dr.pogodin/react-native-fs@^2.38.2"
+    "@expo/metro-runtime": "~58.0.17",
+    "@kittentts/react-native": "^2.0.0",
+    "expo": "~58.0.26",
+    "expo-asset": "~58.0.21",
+    "expo-audio": "~58.0.12",
+    "expo-build-properties": "~58.0.12",
+    "expo-dev-client": "~58.0.21",
+    "expo-status-bar": "~58.0.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-web": "^0.21.4"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "~5.9.2"
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-fs"
+        ],
+        "listUnknownPackages": false
+      }
+    }
+  }
 }

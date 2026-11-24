@@ -49,3 +49,7 @@ coverage/
 .DS_Store
 __MACOSX/
 ._*
+
+# Example lockfiles: the examples install the published SDK, or this checkout
+# through `npm run example:install`.
+examples/*/package-lock.json

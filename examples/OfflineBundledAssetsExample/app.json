@@ -5,13 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kittentts.offlinebundledassets"
@@ -21,7 +15,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.kittentts.offlinebundledassets"
     },
@@ -47,7 +40,9 @@
         {
           "assetsDir": "./assets/kittentts"
         }
-      ]
+      ],
+      "expo-status-bar",
+      "expo-asset"
     ]
   }
 }

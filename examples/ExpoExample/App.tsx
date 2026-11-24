@@ -1,477 +1,411 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  Pressable,
-  View,
-} from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import { Platform } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ExpoAudio from 'expo-audio';
+// espeak-ng (GPL-3.0, its own package) for the languages other than English and Japanese.
+// Leave it out and the app ships no GPL code; those languages then say what to install.
+import '@kittentts/espeak-ng';
 import {
   ALL_VOICES,
   KittenModel,
   KittenTTS,
-  KittenTTSResult,
-  KittenVoice,
+  KittenTTS2,
+  KittenTTS2Tiny,
+  type KittenTTSResult,
+  type KittenVoice,
+  approximateDownloadBytes,
+  createBrowserAudioPlayer,
   createExpoAudioPlayer,
   modelDisplayName,
   voiceDisplayName,
 } from '@kittentts/react-native';
+import {
+  Button,
+  Card,
+  Field,
+  Input,
+  Muted,
+  Row,
+  Screen,
+  Segmented,
+  Select,
+  Stats,
+  Status,
+  TextArea,
+  type SelectGroup,
+} from './components/ui';
+
+// One KittenTTS.create() for every model; the model decides where it runs:
+// Kitten TTS 2 Nano, Pico and Mini and the 0.8 models on the device, Kitten TTS 2
+// Cloud (and Nano, Pico and Mini, with a key) on the Kitten API.
+type Engine = 'tiny' | 'onnx' | 'cloud';
+type AnyTTS = KittenTTS | KittenTTS2Tiny | KittenTTS2;
+
+interface Model {
+  id: string;
+  engine: Engine;
+  label: string;
+  description: string;
+}
+
+const mb = (model: KittenModel) => `${Math.round(approximateDownloadBytes(model) / 1e6)} MB`;
+
+const MODELS: Model[] = [
+  { id: 'kitten-tts-2-nano', engine: 'tiny', label: 'Kitten TTS 2 Nano', description: '8 languages' },
+  { id: 'kitten-tts-2-pico', engine: 'tiny', label: 'Kitten TTS 2 Pico', description: '8 languages, the fastest' },
+  { id: 'kitten-tts-2-mini', engine: 'tiny', label: 'Kitten TTS 2 Mini', description: '16 languages, the best on device' },
+  ...[KittenModel.NanoInt8, KittenModel.Nano, KittenModel.Micro, KittenModel.Mini].map(id => ({
+    id,
+    engine: 'onnx' as const,
+    label: `Kitten TTS 0.8 ${modelDisplayName(id)}`,
+    description: `English, ${mb(id)}`,
+  })),
+  { id: 'kitten-tts-2-cloud', engine: 'cloud', label: 'Kitten TTS 2 Cloud', description: '20+ languages, voice cloning' },
+  { id: 'kitten-tts-2-nano', engine: 'cloud', label: 'Kitten TTS 2 Nano', description: 'In the cloud' },
+  { id: 'kitten-tts-2-pico', engine: 'cloud', label: 'Kitten TTS 2 Pico', description: 'In the cloud' },
+  { id: 'kitten-tts-2-mini', engine: 'cloud', label: 'Kitten TTS 2 Mini', description: 'In the cloud' },
+];
+const keyOf = (m: Model) => `${m.engine}:${m.id}`;
+const MODEL_GROUPS: SelectGroup<string>[] = [
+  { title: 'On this device', engine: 'tiny' },
+  { title: 'On this device: Kitten TTS 0.8 (English)', engine: 'onnx' },
+  { title: 'Cloud: Kitten API (needs a key)', engine: 'cloud' },
+].map(g => ({
+  title: g.title,
+  options: MODELS.filter(m => m.engine === g.engine).map(m => ({ value: keyOf(m), label: m.label, description: m.description })),
+}));
+
+// For the cloud models: put EXPO_PUBLIC_KITTENML_API_KEY in .env, or type the key in
+// the app. A key in an app can be extracted from it, so a shipped app sends requests
+// to your own backend instead (EXPO_PUBLIC_KITTENML_BASE_URL), which adds it.
+const ENV_API_KEY = process.env.EXPO_PUBLIC_KITTENML_API_KEY ?? '';
+const ENV_BASE_URL = process.env.EXPO_PUBLIC_KITTENML_BASE_URL ?? '';
+
+const SAMPLES: Record<string, string> = {
+  en: 'Hello from KittenTTS. This voice was made on demand.',
+  de: 'Guten Morgen! Wie geht es dir heute?',
+  fr: "Bonjour, je m'appelle Marie et j'habite à Paris.",
+  es: 'Hola, ¿cómo estás? Hoy hace buen tiempo.',
+  it: 'Buongiorno, come stai oggi?',
+  pt: 'Olá, tudo bem? Hoje está um dia bonito.',
+  ru: 'Привет, как дела? Сегодня хорошая погода.',
+  hi: 'नमस्ते, आप कैसे हैं? आज मौसम अच्छा है।',
+  ja: '今日はいい天気ですね。散歩に行きましょう。',
+};
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', pt: 'Portuguese',
+  ru: 'Russian', hi: 'Hindi', ja: 'Japanese', zh: 'Chinese', ko: 'Korean', ar: 'Arabic',
+  he: 'Hebrew', fi: 'Finnish', da: 'Danish', sv: 'Swedish', nl: 'Dutch', tr: 'Turkish',
+  pl: 'Polish', id: 'Indonesian', sw: 'Swahili',
+};
+
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2].map(v => ({ value: v, label: `${v}×` }));
+
+interface Voice {
+  id: string;
+  label: string;
+  language: string;
+}
 
 type WorkState =
-  | { kind: 'booting' }
+  | { kind: 'idle'; message?: string }
   | { kind: 'ready' }
-  | { kind: 'preparing' }
-  | { kind: 'loading'; progress: number }
-  | { kind: 'generating' }
+  | { kind: 'loading'; progress?: number }
+  | { kind: 'generating'; andPlay: boolean }
   | { kind: 'playing' }
   | { kind: 'error'; message: string };
 
-const MODELS = [
-  KittenModel.Nano,
-  KittenModel.NanoInt8,
-  KittenModel.Micro,
-  KittenModel.Mini,
-];
-
-const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+interface LastResult {
+  result: KittenTTSResult<string>;
+  seconds: number;
+}
 
 export default function App() {
-  const [tts, setTts] = useState<KittenTTS | null>(null);
-  const ttsRef = useRef<KittenTTS | null>(null);
-  const [state, setState] = useState<WorkState>({ kind: 'booting' });
-  const [model, setModel] = useState(KittenModel.Nano);
-  const [voice, setVoice] = useState(KittenVoice.Bella);
+  return (
+    <SafeAreaProvider>
+      <Demo />
+    </SafeAreaProvider>
+  );
+}
+
+function Demo() {
+  const [model, setModel] = useState<Model>(MODELS[0]);
+  const [apiKey, setApiKey] = useState(ENV_API_KEY);
+  const [tts, setTts] = useState<AnyTTS | null>(null);
+  const ttsRef = useRef<AnyTTS | null>(null);
+  const [state, setState] = useState<WorkState>({ kind: 'loading' });
+  const [voices, setVoices] = useState<Voice[]>([]);
+  const [language, setLanguage] = useState('en');
+  const [voice, setVoice] = useState<string>('');
   const [speed, setSpeed] = useState(1);
-  const [text, setText] = useState('Hello from KittenTTS. This is running on device with Expo.');
-  const [result, setResult] = useState<KittenTTSResult | null>(null);
+  const [text, setText] = useState(SAMPLES.en);
+  const [last, setLast] = useState<LastResult | null>(null);
   const mountedRef = useRef(true);
+  const loadIdRef = useRef(0);
 
-  const busy = state.kind === 'booting' || state.kind === 'preparing' || state.kind === 'loading' || state.kind === 'generating' || state.kind === 'playing';
-  const player = useMemo(() => createExpoAudioPlayer(ExpoAudio), []);
+  const busy = state.kind === 'loading' || state.kind === 'generating' || state.kind === 'playing';
+  // expo-audio on iOS and Android; an audio element in a browser.
+  const player = useMemo(
+    () => (Platform.OS === 'web' ? createBrowserAudioPlayer() : createExpoAudioPlayer(ExpoAudio)),
+    [],
+  );
 
-  const loadModel = useCallback(async (nextModel: KittenModel) => {
-    setState({ kind: 'preparing' });
-    setResult(null);
+  const load = useCallback(async (next: Model, key: string) => {
+    const loadId = ++loadIdRef.current;
+    setLast(null);
+    const previous = ttsRef.current;
+    ttsRef.current = null;
+    setTts(null);
+    await previous?.dispose().catch(() => {});
 
+    if (next.engine === 'cloud' && !key && !ENV_BASE_URL) {
+      setVoices([]);
+      setState({ kind: 'idle', message: 'Add a Kitten API key to use the cloud models.' });
+      return;
+    }
+    setState({ kind: 'loading' });
     try {
-      await ttsRef.current?.dispose();
-      const instance = await KittenTTS.create(
-        { model: nextModel, player },
-        (progress, info) => {
-          if (mountedRef.current && info?.stage === 'downloading') {
-            setState({
-              kind: 'loading',
-              progress,
-            });
-          }
-        },
-      );
-      if (!mountedRef.current) {
-        if (!__DEV__) await instance.dispose();
+      const onProgress = (progress: number, info?: { stage?: string }) => {
+        if (mountedRef.current && loadId === loadIdRef.current) {
+          setState({ kind: 'loading', progress: info?.stage === 'downloading' ? progress : undefined });
+        }
+      };
+      const instance: AnyTTS = next.engine === 'onnx'
+        ? await KittenTTS.create({ model: next.id as KittenModel, player }, onProgress)
+        : next.engine === 'tiny'
+          ? await KittenTTS.create({ model: next.id as 'kitten-tts-2-nano', player }, onProgress)
+          : await KittenTTS.create({
+            model: next.id as 'kitten-tts-2-cloud',
+            ...(ENV_BASE_URL ? { baseUrl: ENV_BASE_URL } : { apiKey: key }),
+            player,
+          });
+      if (!mountedRef.current || loadId !== loadIdRef.current) {
+        await instance.dispose();
         return;
       }
+      const list = voicesOf(instance);
       ttsRef.current = instance;
       setTts(instance);
+      setVoices(list);
+      const first = list.find(v => v.language === language) ?? list[0];
+      setLanguage(first?.language ?? 'en');
+      setVoice(first?.id ?? '');
       setState({ kind: 'ready' });
     } catch (error) {
-      ttsRef.current = null;
-      if (mountedRef.current) {
-        setTts(null);
+      if (mountedRef.current && loadId === loadIdRef.current) {
+        setVoices([]);
         setState({ kind: 'error', message: friendlyError(error) });
       }
     }
-  }, [player]);
+  }, [language, player]);
 
   useEffect(() => {
     mountedRef.current = true;
-    loadModel(model);
+    load(model, apiKey);
     return () => {
       mountedRef.current = false;
       // Fast Refresh can tear down the JS runtime while ONNX native objects are
       // still active, so avoid releasing the session during dev reloads.
-      if (!__DEV__) {
-        ttsRef.current?.dispose().catch(() => {});
-      }
+      if (!__DEV__) ttsRef.current?.dispose().catch(() => {});
       ttsRef.current = null;
     };
-    // Load once on mount. Model changes are handled by the model control.
+    // Load once on mount; picking a model loads the next one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectModel = useCallback((nextModel: KittenModel) => {
-    setModel(nextModel);
-    loadModel(nextModel);
-  }, [loadModel]);
+  const selectModel = (key: string) => {
+    const next = MODELS.find(m => keyOf(m) === key)!;
+    setModel(next);
+    load(next, apiKey);
+  };
 
-  const generate = useCallback(async () => {
+  const languages = useMemo(() => Array.from(new Set(voices.map(v => v.language))), [voices]);
+  const languageVoices = useMemo(() => voices.filter(v => v.language === language), [voices, language]);
+
+  const selectLanguage = (next: string) => {
+    // Swap the sample text too, unless it was edited.
+    if (Object.values(SAMPLES).includes(text)) setText(SAMPLES[next] ?? text);
+    setLanguage(next);
+    setVoice(voices.find(v => v.language === next)?.id ?? '');
+  };
+
+  // Generate, then play when speaking: the timing then counts only the generation.
+  const run = useCallback(async (andPlay: boolean) => {
     if (!tts || !text.trim()) return;
-    setState({ kind: 'generating' });
+    const chosen = voices.find(v => v.id === voice);
+    setState({ kind: 'generating', andPlay });
+    const t0 = Date.now();
     try {
-      const nextResult = await tts.generate(text, voice, speed);
-      setResult(nextResult);
+      const result = await generate(tts, text, chosen, speed);
+      setLast({ result, seconds: (Date.now() - t0) / 1000 });
+      if (andPlay) {
+        setState({ kind: 'playing' });
+        await tts.play(result);
+      }
       setState({ kind: 'ready' });
     } catch (error) {
       setState({ kind: 'error', message: friendlyError(error) });
     }
-  }, [speed, text, tts, voice]);
+  }, [speed, text, tts, voice, voices]);
 
-  const speak = useCallback(async () => {
-    if (!tts || !text.trim()) return;
-    setState({ kind: 'playing' });
-    try {
-      const nextResult = await tts.speak(text, voice, speed);
-      setResult(nextResult);
-      setState({ kind: 'ready' });
-    } catch (error) {
-      setState({ kind: 'error', message: friendlyError(error) });
-    }
-  }, [speed, text, tts, voice]);
+  const stop = useCallback(() => {
+    tts?.stopSpeaking().catch(() => {});
+  }, [tts]);
+
+  const needsKey = model.engine === 'cloud' && !ENV_BASE_URL;
+  const canRun = !busy && !!tts && !!text.trim();
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>KittenTTS</Text>
-          <Text style={styles.subtitle}>Expo on-device text to speech</Text>
-        </View>
-
-        <StatusPanel state={state} />
-
-        <View style={styles.group}>
-          <Text style={styles.label}>Text</Text>
-          <TextInput
-            style={styles.input}
-            value={text}
-            onChangeText={setText}
-            multiline
-            editable={!busy}
-            placeholder="Enter something to speak"
-            placeholderTextColor="#8D8D93"
-          />
-        </View>
-
-        <OptionGroup
-          label="Model"
-          values={MODELS}
-          selected={model}
-          disabled={busy}
-          getLabel={modelDisplayName}
-          onSelect={selectModel}
-        />
-
-        <OptionGroup
-          label="Voice"
-          values={ALL_VOICES}
-          selected={voice}
-          disabled={busy}
-          getLabel={voiceDisplayName}
-          onSelect={setVoice}
-        />
-
-        <OptionGroup
-          label={`Speed: ${speed.toFixed(2).replace(/0$/, '')}x`}
-          values={SPEEDS}
-          selected={speed}
-          disabled={busy}
-          getLabel={(value) => `${value.toFixed(2).replace(/0$/, '')}x`}
-          onSelect={setSpeed}
-        />
-
-        <View style={styles.actions}>
-          <ActionButton label="Generate" primary disabled={busy || !tts || !text.trim()} onPress={generate} />
-          <ActionButton label="Speak" disabled={busy || !tts || !text.trim()} onPress={speak} />
-        </View>
-
-        {result ? (
-          <View style={styles.result}>
-            <Text style={styles.resultTitle}>Last Result</Text>
-            <ResultRow label="Voice" value={voiceDisplayName(result.voice)} />
-            <ResultRow label="Duration" value={`${result.duration.toFixed(2)}s`} />
-            <ResultRow label="Samples" value={result.samples.length.toLocaleString()} />
-            <ResultRow label="Sample rate" value={`${result.sampleRate.toLocaleString()} Hz`} />
-          </View>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function StatusPanel({ state }: { state: WorkState }) {
-  if (state.kind === 'ready') return null;
-
-  if (state.kind === 'error') {
-    return (
-      <View style={[styles.status, styles.statusError]}>
-        <Text style={styles.statusErrorText}>{state.message}</Text>
-      </View>
-    );
-  }
-
-  const text = state.kind === 'booting'
-    ? 'Preparing...'
-    : state.kind === 'preparing'
-      ? 'Preparing assets...'
-    : state.kind === 'loading'
-      ? `Downloading assets... ${Math.round(state.progress * 100)}%`
-      : state.kind === 'generating'
-        ? 'Generating audio...'
-        : 'Playing audio...';
-
-  return (
-    <View style={styles.status}>
-      <ActivityIndicator color="#007AFF" />
-      <Text style={styles.statusText}>{text}</Text>
-    </View>
-  );
-}
-
-function OptionGroup<T extends string | number>({
-  label,
-  values,
-  selected,
-  disabled,
-  getLabel,
-  onSelect,
-}: {
-  label: string;
-  values: readonly T[];
-  selected: T;
-  disabled: boolean;
-  getLabel: (value: T) => string;
-  onSelect: (value: T) => void;
-}) {
-  return (
-    <View style={styles.group}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.options}>
-        {values.map((value) => {
-          const active = value === selected;
-          return (
-            <Pressable
-              key={String(value)}
-              style={[styles.option, active && styles.optionActive, disabled && styles.disabled]}
-              disabled={disabled}
-              onPress={() => onSelect(value)}
-            >
-              <Text style={[styles.optionText, active && styles.optionTextActive]}>{getLabel(value)}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-function ActionButton({
-  label,
-  primary,
-  disabled,
-  onPress,
-}: {
-  label: string;
-  primary?: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={[styles.button, primary ? styles.buttonPrimary : styles.buttonSecondary, disabled && styles.disabled]}
-      disabled={disabled}
-      onPress={onPress}
+    <Screen
+      title="Text to speech"
+      description="Pick a model, type something, and listen. On-device models work offline once downloaded."
+      badge={Platform.OS === 'web' ? 'Web' : 'Expo'}
     >
-      <Text style={primary ? styles.buttonPrimaryText : styles.buttonSecondaryText}>{label}</Text>
-    </Pressable>
+      <Card>
+        <Field label="Model">
+          <Select title="Model" value={keyOf(model)} groups={MODEL_GROUPS} onChange={selectModel} disabled={busy} />
+        </Field>
+        {needsKey ? (
+          <Field label="Kitten API key" hint="Each cloud generation is billed to your KittenML account.">
+            <Row>
+              <Input
+                value={apiKey}
+                onChangeText={setApiKey}
+                placeholder="sk_kitten_..."
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                editable={!busy}
+                style={{ flex: 1 }}
+              />
+              <Button title="Connect" variant="outline" disabled={busy || !apiKey.trim()} onPress={() => load(model, apiKey.trim())} style={{ flex: 0 }} />
+            </Row>
+          </Field>
+        ) : null}
+        <ModelStatus state={state} engine={model.engine} />
+      </Card>
+
+      <Card>
+        <Field label="Text">
+          <TextArea value={text} onChangeText={setText} editable={!busy} placeholder="Type something to say" />
+        </Field>
+        {languageVoices.length > 0 ? (
+          <Row>
+            {languages.length > 1 ? (
+              <Field label="Language" style={{ flex: 1 }}>
+                <Select
+                  title="Language"
+                  value={language}
+                  groups={[{ options: languages.map(code => ({ value: code, label: LANGUAGE_NAMES[code] ?? code.toUpperCase() })) }]}
+                  onChange={selectLanguage}
+                  disabled={busy}
+                />
+              </Field>
+            ) : null}
+            <Field label="Voice" style={{ flex: 1 }}>
+              <Select
+                title={`Voice (${languageVoices.length})`}
+                value={voice}
+                groups={[{ options: languageVoices.map(v => ({ value: v.id, label: v.label })) }]}
+                onChange={setVoice}
+                disabled={busy}
+              />
+            </Field>
+          </Row>
+        ) : null}
+        <Field label="Speed">
+          <Segmented value={speed} options={SPEEDS} onChange={setSpeed} disabled={busy} />
+        </Field>
+        <Row>
+          {state.kind === 'playing'
+            ? <Button title="Stop" icon="stop" onPress={stop} />
+            : <Button title="Speak" icon="play" loading={state.kind === 'generating' && state.andPlay} disabled={!canRun} onPress={() => run(true)} />}
+          <Button
+            title="Generate"
+            variant="outline"
+            loading={state.kind === 'generating' && !state.andPlay}
+            disabled={!canRun}
+            onPress={() => run(false)}
+          />
+        </Row>
+      </Card>
+
+      {last ? (
+        <Card title="Result">
+          <Stats
+            items={[
+              { label: 'Audio', value: `${last.result.duration.toFixed(2)} s` },
+              { label: 'Took', value: `${last.seconds.toFixed(2)} s` },
+              { label: 'Than real time', value: pace(last.result.duration / last.seconds) },
+            ]}
+          />
+          <Muted>
+            {voices.find(v => v.id === last.result.voice)?.label ?? (last.result.voice || 'Default voice')}
+            {' · '}
+            {(last.result.sampleRate / 1000).toFixed(0)} kHz
+          </Muted>
+        </Card>
+      ) : null}
+    </Screen>
   );
 }
 
-function ResultRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.resultRow}>
-      <Text style={styles.resultLabel}>{label}</Text>
-      <Text style={styles.resultValue}>{value}</Text>
-    </View>
-  );
+function ModelStatus({ state, engine }: { state: WorkState; engine: Engine }) {
+  switch (state.kind) {
+    case 'loading':
+      return state.progress !== undefined
+        ? <Status kind="loading" text={`Downloading the model, ${Math.round(state.progress * 100)}%`} progress={state.progress} />
+        : <Status kind="loading" text={engine === 'cloud' ? 'Connecting...' : 'Loading the model...'} />;
+    case 'error':
+      return <Status kind="error" text={state.message} />;
+    case 'idle':
+      return state.message ? <Status kind="note" text={state.message} /> : null;
+    case 'generating':
+      return <Status kind="loading" text="Generating..." />;
+    case 'playing':
+      return <Status kind="loading" text="Speaking..." />;
+    default:
+      return <Status kind="ready" text={engine === 'cloud' ? 'Connected' : 'Ready, on this device'} />;
+  }
+}
+
+/** The voices an instance offers, in one shape for the picker. */
+function voicesOf(tts: AnyTTS): Voice[] {
+  if (tts instanceof KittenTTS2Tiny) {
+    return tts.voices().map(v => ({ id: v.name, label: v.name, language: v.language }));
+  }
+  if (tts instanceof KittenTTS2) {
+    // Built-in voices are named like "Frank — Reserved Announcer"; saved voices come first.
+    return tts.voices.map(v => ({ id: v.id, label: v.name.split(' — ')[0], language: v.language }));
+  }
+  return ALL_VOICES.map(v => ({ id: v, label: voiceDisplayName(v), language: 'en' }));
+}
+
+/** generate() with the options each engine takes. */
+function generate(tts: AnyTTS, text: string, voice: Voice | undefined, speed: number): Promise<KittenTTSResult<string>> {
+  if (tts instanceof KittenTTS2Tiny) {
+    return tts.generate(text, { voice: voice?.id, language: voice?.language, speed });
+  }
+  if (tts instanceof KittenTTS2) {
+    return tts.generate(text, { voice: voice?.id, speed });
+  }
+  return tts.generate(text, voice?.id as KittenVoice | undefined, speed);
+}
+
+/** How much faster than playback the audio was made: "4.2× faster" or "1.3× slower". */
+function pace(ratio: number): string {
+  return ratio >= 1 ? `${ratio.toFixed(1)}× faster` : `${(1 / ratio).toFixed(1)}× slower`;
 }
 
 function friendlyError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
-
   if (lower.includes('onnxruntime') || lower.includes('react-native-fs') || lower.includes('nativemodule')) {
     return 'This example needs an Expo development build because it uses native inference and filesystem modules.';
   }
-  if (lower.includes('download') || lower.includes('network') || lower.includes('http')) {
-    return 'Could not download the model assets. Check the network connection and try again.';
-  }
   if (lower.includes('unable to resolve') || lower.includes('cannot find module')) {
-    return 'The local KittenTTS package could not be loaded. Run npm install and restart Expo with a cleared cache.';
+    return 'The KittenTTS package could not be loaded. Run npm install and restart Expo with a cleared cache.';
   }
-
   return message || 'Something went wrong.';
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F4F5F8',
-  },
-  content: {
-    padding: 20,
-    paddingTop: Platform.OS === 'android' ? 44 : 24,
-    paddingBottom: 40,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    color: '#111111',
-    fontSize: 34,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: '#6F7178',
-    fontSize: 17,
-    marginTop: 4,
-  },
-  group: {
-    marginBottom: 18,
-  },
-  label: {
-    color: '#6D6F76',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  input: {
-    minHeight: 120,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    color: '#15171A',
-    fontSize: 18,
-    lineHeight: 25,
-    padding: 16,
-    textAlignVertical: 'top',
-  },
-  options: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  option: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: '#DADCE2',
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  optionActive: {
-    borderColor: '#007AFF',
-    backgroundColor: '#007AFF',
-  },
-  optionText: {
-    color: '#2B2D33',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  optionTextActive: {
-    color: '#FFFFFF',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-    marginBottom: 18,
-  },
-  button: {
-    flex: 1,
-    minHeight: 54,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonPrimary: {
-    backgroundColor: '#007AFF',
-  },
-  buttonSecondary: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#007AFF',
-    borderWidth: 1,
-  },
-  buttonPrimaryText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  buttonSecondaryText: {
-    color: '#007AFF',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  disabled: {
-    opacity: 0.45,
-  },
-  status: {
-    minHeight: 52,
-    borderRadius: 8,
-    backgroundColor: '#EAF2FF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    marginBottom: 18,
-  },
-  statusText: {
-    color: '#0B63CE',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  statusError: {
-    backgroundColor: '#FFF0F0',
-  },
-  statusErrorText: {
-    color: '#D93025',
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 21,
-  },
-  result: {
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-  },
-  resultTitle: {
-    color: '#1F8F4D',
-    fontSize: 17,
-    fontWeight: '800',
-    marginBottom: 10,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
-    paddingVertical: 5,
-  },
-  resultLabel: {
-    color: '#6F7178',
-    fontSize: 15,
-  },
-  resultValue: {
-    color: '#15171A',
-    flexShrink: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'right',
-  },
-});

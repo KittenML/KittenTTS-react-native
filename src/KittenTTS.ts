@@ -10,7 +10,11 @@ import {
   isKittenTTSError,
 } from './KittenTTSError';
 import { KittenTTSResult } from './KittenTTSResult';
-import { KittenModel, speedPrior } from './KittenModel';
+import { KittenTTS2, type KittenTTS2CreateOptions } from './KittenTTS2';
+import { engineFor } from './engineFor';
+import { speedPrior } from './KittenModel';
+import { KittenTTS2Tiny } from './tiny/KittenTTS2Tiny';
+import type { KittenTTS2TinyOptions } from './tiny/KittenTTS2Tiny';
 import { KittenVoice } from './KittenVoice';
 import type { KittenWordTiming } from './KittenWordTiming';
 import { TTSEngine } from './engine/TTSEngine';
@@ -108,12 +112,49 @@ export class KittenTTS {
    * Downloads all required files if not cached, loads the ONNX model, and
    * prepares the engine for inference.
    *
+   * The model picks what you get, as in the Python package:
+   * - a 0.8 model (the default): this class, on the device;
+   * - `'kitten-tts-2-nano'`, `'kitten-tts-2-pico'` or `'kitten-tts-2-mini'`: a
+   *   {@link KittenTTS2Tiny}, on the device;
+   * - `'kitten-tts-2'` (or any Kitten TTS 2 model with `apiKey` or `baseUrl`): a
+   *   {@link KittenTTS2}, through the Kitten API, with voice cloning and presets.
+   *   Nothing is downloaded for it.
+   *
    * @param options - Configuration and player for this session.
    * @param onProgress - Optional callback for download progress [0, 1].
    * @returns A ready-to-use KittenTTS instance.
    */
-  static async create(
+  static create(
+    options: KittenTTS2TinyOptions,
+    onProgress?: ProgressHandler,
+  ): Promise<KittenTTS2Tiny>;
+  static create(
+    options: KittenTTS2CreateOptions,
+    onProgress?: ProgressHandler,
+  ): Promise<KittenTTS2>;
+  static create(
     options?: KittenTTSCreateOptions,
+    onProgress?: ProgressHandler,
+  ): Promise<KittenTTS>;
+  static async create(
+    createOptions?: KittenTTSCreateOptions | KittenTTS2TinyOptions | KittenTTS2CreateOptions,
+    onProgress?: ProgressHandler,
+  ): Promise<KittenTTS | KittenTTS2Tiny | KittenTTS2> {
+    switch (engineFor(createOptions)) {
+      case 'tiny':
+        return KittenTTS2Tiny.create(createOptions as KittenTTS2TinyOptions, onProgress);
+      case 'api': {
+        const tts = await KittenTTS2.create(createOptions as KittenTTS2CreateOptions);
+        onProgress?.(1, { stage: 'complete' });
+        return tts;
+      }
+      default:
+        return KittenTTS.createOnDevice(createOptions as KittenTTSCreateOptions | undefined, onProgress);
+    }
+  }
+
+  private static async createOnDevice(
+    options: KittenTTSCreateOptions | undefined,
     onProgress?: ProgressHandler,
   ): Promise<KittenTTS> {
     const resolved = resolveConfig(options);
@@ -270,7 +311,8 @@ export class KittenTTS {
    * playback starts.
    */
   async play(
-    result: KittenTTSResult,
+    // Any result plays, from any model: only its samples are used.
+    result: KittenTTSResult<string>,
     options: AudioPlayOptions = {},
   ): Promise<void> {
     if (this.disposed) throw KittenTTSError.engineNotReady();

@@ -1,0 +1,27 @@
+# Typecheck and tests on every push and pull request. The tests that need the
+# Emscripten runtimes or the Kitten TTS 2 text data skip here and say why;
+# docs/development.md runs all of them.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

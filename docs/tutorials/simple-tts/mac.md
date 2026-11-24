@@ -3,8 +3,8 @@
 This is the long version of the quick start. It starts from an empty app and
 ends with a small screen that speaks whatever you type.
 
-KittenTTS runs the model on the phone or simulator. It does not call a cloud
-TTS API and it does not need an API key.
+It uses Kitten TTS 2 Nano, which runs on the phone or simulator. It does not
+call a cloud TTS API and it does not need an API key.
 
 ## What You Will Build
 
@@ -107,9 +107,24 @@ Use this path if you want a normal React Native CLI app.
 ```bash
 npx @react-native-community/cli init SimpleKittenTTS
 cd SimpleKittenTTS
-npm install @kittentts/react-native react-native-sound
+npm install @kittentts/react-native onnxruntime-react-native "react-native-fs@npm:@dr.pogodin/react-native-fs@>=2.38.2 <2.41.0" react-native-sound
 cd ios && pod install && cd ..
 ```
+
+React Native CLI links only the app's own dependencies on iOS, so the app lists
+ONNX Runtime and the file system module itself. Keep the CLI from also linking
+ONNX Runtime on Android, where the SDK registers it:
+
+```js
+// react-native.config.js
+module.exports = {
+  dependencies: {
+    'onnxruntime-react-native': { platforms: { android: null } },
+  },
+};
+```
+
+See [Bare React Native](../../getting-started.md#bare-react-native).
 
 Run iOS:
 
@@ -162,19 +177,14 @@ export default function App() {
     setStatus('Preparing voice model...');
 
     try {
-      const tts = await KittenTTS.create({ player }, (progress, info) => {
-        if (info?.stage === 'cached') {
-          setStatus('Model is already downloaded.');
-          return;
-        }
-
+      const tts = await KittenTTS.create({ model: 'kitten-tts-2-nano', player }, (progress, info) => {
         if (info?.stage === 'downloading') {
           setStatus(`Downloading model ${Math.round(progress * 100)}%`);
         }
       });
 
       setStatus('Speaking...');
-      await tts.speak(text);
+      await tts.speak(text, { voice: 'Eleanor' });
       setStatus('Done');
       await tts.dispose();
     } catch (error) {
@@ -283,19 +293,32 @@ Expected first run:
 3. The phone or simulator speaks the text.
 4. The next run skips the download and uses the local cache.
 
-## Add A Retry Button
+## Retry A Failed Download
 
-If the user loses internet in the middle of a download, let them retry cleanly:
+If the user loses internet in the middle of a download, tapping `Speak` again is
+the retry: `KittenTTS.create()` downloads only the files that are still missing,
+and tries each file 4 times (`downloadRetries`). A file that did not finish is
+not kept.
+
+## Download Before The First Speak
+
+To show a setup screen before the user taps `Speak`, download the model's files
+first with `KittenTTS2Tiny.predownload()`. It downloads nothing when the files
+are already there:
 
 ```tsx
-async function retryModelDownload() {
+import { KittenTTS2Tiny } from '@kittentts/react-native';
+
+async function prepareModel() {
   setBusy(true);
 
   try {
-    await KittenTTS.redownloadModel(undefined, (progress) => {
-      setStatus(`Redownloading model ${Math.round(progress * 100)}%`);
+    await KittenTTS2Tiny.predownload({ model: 'kitten-tts-2-nano' }, (progress, info) => {
+      if (info?.stage === 'downloading') {
+        setStatus(`Downloading model ${Math.round(progress * 100)}%`);
+      }
     });
-    setStatus('Model downloaded. Tap Speak again.');
+    setStatus('Voice model is ready.');
   } catch (error) {
     setStatus(readableError(error));
   } finally {
@@ -304,24 +327,21 @@ async function retryModelDownload() {
 }
 ```
 
-Add another button:
+## With Kitten TTS 0.8
+
+The same screen works with the older English models: pass
+`model: KittenModel.NanoInt8` to `create()`, and call
+`tts.speak(text, KittenVoice.Bella)` (0.8 takes a `KittenVoice`, not a name). The 0.8 models also have cache helpers that Kitten TTS 2
+does not: `KittenTTS.getModelCacheInfo()` checks the cache without downloading,
+and `KittenTTS.redownloadModel()` deletes and downloads the model again:
 
 ```tsx
-<Button title="Retry model download" onPress={retryModelDownload} disabled={busy} />
-```
+const cache = await KittenTTS.getModelCacheInfo({ model: KittenModel.NanoInt8 });
+setStatus(cache.isCached ? 'Voice model is ready.' : 'Voice model needs to download.');
 
-## Check Whether The Model Is Already Downloaded
-
-Use this if you want to show a setup screen before the user taps `Speak`:
-
-```tsx
-const cache = await KittenTTS.getModelCacheInfo();
-
-if (cache.isCached) {
-  setStatus('Voice model is ready.');
-} else {
-  setStatus('Voice model needs to download.');
-}
+await KittenTTS.redownloadModel({ model: KittenModel.NanoInt8 }, (progress) => {
+  setStatus(`Redownloading model ${Math.round(progress * 100)}%`);
+});
 ```
 
 ## Build A Debug APK On macOS
@@ -348,7 +368,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 | Android cannot find SDK | Open Android Studio and install Platform Tools |
 | No sound on simulator | Check simulator volume and try a physical device |
 | First generation is slow | Expected only on first model download |
-| Download fails | Check internet, then call `KittenTTS.redownloadModel()` |
+| Download fails | Check internet, then tap `Speak` again |
 
 ## Where To Go Next
 

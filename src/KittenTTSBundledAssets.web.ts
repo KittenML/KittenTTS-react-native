@@ -2,6 +2,13 @@ import { KittenModel } from './KittenModel';
 import { CEPhonemizer } from './phonemizer/CEPhonemizer.web';
 import type { KittenTTSConfig } from './KittenTTSConfig.web';
 import type { KittenPhonemizerProtocol } from './phonemizer/types';
+import { KittenTTSError } from './KittenTTSError';
+import type { BundledTinyOptions, CreateBundledTinyOptions, KittenTTS2BundledAssets } from './tiny/bundled';
+import { bundledTinyModel, bundledTinyOptionsAt } from './tiny/bundled';
+import { isTinyModel } from './tiny/TinyRepo';
+
+export { bundledTinyModels } from './tiny/bundled';
+export type { BundledTinyOptions, CreateBundledTinyOptions, KittenTTS2BundledAssets } from './tiny/bundled';
 
 export interface KittenTTSBundledModelFiles {
   onnx: string;
@@ -27,9 +34,26 @@ export interface KittenTTSBundledAssetsManifestV2 {
   };
 }
 
+/**
+ * Written when the bundle has a Kitten TTS 2 Nano, Pico or Mini model: version 2's fields
+ * for the 0.8 models (`models` is empty and the rest absent when there are none) plus
+ * `kittenTTS2`.
+ */
+export interface KittenTTSBundledAssetsManifestV3 {
+  version: 3;
+  defaultModel?: KittenModel | string;
+  models: Record<string, KittenTTSBundledModelFiles>;
+  files?: {
+    phonemizerRules: string;
+    phonemizerList: string;
+  };
+  kittenTTS2: KittenTTS2BundledAssets;
+}
+
 export type KittenTTSBundledAssetsManifest =
   | KittenTTSBundledAssetsManifestV1
-  | KittenTTSBundledAssetsManifestV2;
+  | KittenTTSBundledAssetsManifestV2
+  | KittenTTSBundledAssetsManifestV3;
 
 export interface CreateBundledAssetConfigOptions
   extends Omit<KittenTTSConfig, 'model' | 'modelFiles' | 'phonemizer'> {
@@ -64,12 +88,13 @@ export async function createBundledAssetConfig(
   const root = stripTrailingSlash(basePath ?? assetRoot);
   const model = parseModel(selectedModel ?? defaultManifestModel(manifest));
   const modelFiles = manifestModelFiles(manifest, model);
+  const phonemizerFiles = manifestPhonemizerFiles(manifest);
 
   const [onnxData, voicesData, rulesText, listText] = await Promise.all([
     readBundledAssetBinary(root, modelFiles.onnx),
     readBundledAssetBinary(root, modelFiles.voices),
-    readBundledAssetText(root, manifest.files.phonemizerRules),
-    readBundledAssetText(root, manifest.files.phonemizerList),
+    readBundledAssetText(root, phonemizerFiles.phonemizerRules),
+    readBundledAssetText(root, phonemizerFiles.phonemizerList),
   ]);
 
   return {
@@ -84,6 +109,20 @@ export async function createBundledAssetConfig(
       listText,
     }),
   };
+}
+
+/**
+ * `KittenTTS.create()` options for a bundled Kitten TTS 2 Nano, Pico or Mini model. In a
+ * browser the folders are URL prefixes (`basePath`, else `assetRoot`) the files are fetched
+ * from, so serve the bundle as static files (a missing file must be a 404); under Node,
+ * `basePath` is a folder. Nothing is copied (`copyDirectory` is for Android).
+ */
+export async function createBundledTinyOptions(
+  manifest: KittenTTSBundledAssetsManifest,
+  options: CreateBundledTinyOptions = {},
+): Promise<BundledTinyOptions> {
+  const { basePath, assetRoot = 'kittentts', model } = options;
+  return bundledTinyOptionsAt(bundledTinyModel(manifest, model), stripTrailingSlash(basePath ?? assetRoot));
 }
 
 async function readBundledAssetBinary(
@@ -118,7 +157,23 @@ export function bundledAssetModels(
 function defaultManifestModel(
   manifest: KittenTTSBundledAssetsManifest,
 ): KittenModel | string {
-  return manifest.version === 1 ? manifest.model : manifest.defaultModel;
+  const model = manifest.version === 1 ? manifest.model : manifest.defaultModel;
+  if (model === undefined) throw noOnnxModels(manifest);
+  return model;
+}
+
+function manifestPhonemizerFiles(
+  manifest: KittenTTSBundledAssetsManifest,
+): { phonemizerRules: string; phonemizerList: string } {
+  if (!manifest.files) throw noOnnxModels(manifest);
+  return manifest.files;
+}
+
+function noOnnxModels(manifest: KittenTTSBundledAssetsManifest): KittenTTSError {
+  const tiny = manifest.version === 3 ? Object.keys(manifest.kittenTTS2.models) : [];
+  return KittenTTSError.invalidArgument(
+    `The bundled assets have no KittenTTS 0.8 model${tiny.length ? ` (they have ${tiny.join(', ')}: use createBundledTinyOptions)` : ''}.`,
+  );
 }
 
 function manifestModelFiles(
@@ -142,6 +197,9 @@ function manifestModelFiles(
 function parseModel(model: KittenModel | string): KittenModel {
   if (Object.values(KittenModel).includes(model as KittenModel)) {
     return model as KittenModel;
+  }
+  if (isTinyModel(model)) {
+    throw KittenTTSError.invalidArgument(`${model} is a Kitten TTS 2 model: load it with createBundledTinyOptions.`);
   }
   throw new Error(`Unknown KittenTTS model in bundled assets manifest: ${model}`);
 }
