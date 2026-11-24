@@ -60,7 +60,7 @@ const MODELS: Model[] = [
     label: `Kitten TTS 0.8 ${modelDisplayName(id)}`,
     description: `English, ${mb(id)}`,
   })),
-  { id: 'kitten-tts-2-cloud', engine: 'cloud', label: 'Kitten TTS 2 Cloud', description: '20+ languages, voice cloning' },
+  { id: 'kitten-tts-2', engine: 'cloud', label: 'Kitten TTS 2 Ternary', description: '20+ languages, voice cloning' },
   { id: 'kitten-tts-2-nano', engine: 'cloud', label: 'Kitten TTS 2 Nano', description: 'In the cloud' },
   { id: 'kitten-tts-2-pico', engine: 'cloud', label: 'Kitten TTS 2 Pico', description: 'In the cloud' },
   { id: 'kitten-tts-2-mini', engine: 'cloud', label: 'Kitten TTS 2 Mini', description: 'In the cloud' },
@@ -176,7 +176,7 @@ function Demo() {
         : next.engine === 'tiny'
           ? await KittenTTS.create({ model: next.id as 'kitten-tts-2-nano', player }, onProgress)
           : await KittenTTS.create({
-            model: next.id as 'kitten-tts-2-cloud',
+            model: next.id as 'kitten-tts-2',
             ...(ENV_BASE_URL ? { baseUrl: ENV_BASE_URL } : { apiKey: key }),
             player,
           });

@@ -45,7 +45,7 @@ npm install @kittentts/espeak-ng
 import '@kittentts/espeak-ng';
 ```
 
-English, Japanese, the 0.8 models and Kitten TTS 2 Cloud never need it. If the
+English, Japanese, the 0.8 models and Kitten TTS 2 Ternary never need it. If the
 error says the package has another espeak-ng version, install the
 `@kittentts/espeak-ng` version that matches `@kittentts/react-native`.
 

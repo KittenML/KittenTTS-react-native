@@ -5,7 +5,7 @@ An Expo (SDK 58) app for `@kittentts/react-native` with every engine the SDK has
 - **Kitten TTS 2 on the device** (the default): Nano, Pico and Mini, 8 languages
   (Mini 16), each language's own voices. A language's files download the first
   time it is used.
-- **Kitten TTS 2 in the cloud**: Kitten TTS 2 Cloud, and Nano, Pico and Mini, on
+- **Kitten TTS 2 in the cloud**: Kitten TTS 2 Ternary, and Nano, Pico and Mini, on
   the Kitten API. Needs an API key (or your own backend, below).
 - **Kitten TTS 0.8**: the older Nano, Nano int8, Micro and Mini on the device,
   English, 8 voices.
@@ -94,7 +94,7 @@ import { KittenModel, KittenTTS, KittenVoice, createExpoAudioPlayer } from '@kit
 const player = createExpoAudioPlayer(ExpoAudio);
 
 const tiny = await KittenTTS.create({ model: 'kitten-tts-2-nano', player });              // on device
-const cloud = await KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey, player });    // Kitten API
+const cloud = await KittenTTS.create({ model: 'kitten-tts-2', apiKey, player });    // Kitten API
 const onnx = await KittenTTS.create({ model: KittenModel.NanoInt8, player });            // 0.8
 
 await tiny.speak('Guten Morgen!', { voice: 'Anna', language: 'de' });

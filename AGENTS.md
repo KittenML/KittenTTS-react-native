@@ -10,7 +10,7 @@ the engine from the model name, as the Python package does (`src/engineFor.ts`):
 - `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'`: `KittenTTS2Tiny` (`src/tiny/`), on
   the device with ONNX Runtime, downloading per language. With `apiKey` or
   `baseUrl` they go to the Kitten API instead.
-- `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`): `KittenTTS2`, Kitten TTS 2 Cloud
+- `'kitten-tts-2'`: `KittenTTS2`, Kitten TTS 2 Ternary
   on the Kitten API.
 - Anything else: the 0.8 models (`KittenTTS`), English, on the device. With no
   `model` the default is still 0.8 Nano, for compatibility.
@@ -41,7 +41,7 @@ languages throw `MISSING_DEPENDENCY`.
 - `src/engineFor.ts`: which engine `KittenTTS.create()` builds from the model, as
   the Python package does: 0.8 on the device, Kitten TTS 2 Nano/Pico/Mini on the
   device (`src/tiny/`), or the Kitten API (`src/api/`, `src/KittenTTS2.ts`) for
-  `kitten-tts-2-cloud` / `kitten-tts-2` and for any Kitten TTS 2 model given an
+  `kitten-tts-2` and for any Kitten TTS 2 model given an
   `apiKey` or `baseUrl`.
 - `src/KittenTTSConfig.ts`: user config and defaults.
 - `src/*.web.ts`: React Native Web entrypoints and platform-specific browser implementations.
@@ -52,7 +52,7 @@ languages throw `MISSING_DEPENDENCY`.
 - `src/KittenTTSError.ts`: SDK error codes and helpers, including `KittenAPIError`
   for the Kitten API.
 - `src/KittenTTS2.ts` / `src/KittenTTS2.web.ts`: Kitten TTS 2 through the hosted
-  Kitten API. `KittenTTS.create()` returns one for `model: 'kitten-tts-2-cloud'`
+  Kitten API. `KittenTTS.create()` returns one for `model: 'kitten-tts-2'`
   (or `'kitten-tts-2'`). They
   only wire in the platform's `AudioOutput` and file reading; the logic is in
   `src/api/KittenTTS2Base.ts` (requests, cloning uploads, voice listing) and
@@ -80,7 +80,7 @@ languages throw `MISSING_DEPENDENCY`.
   linking off in `react-native.config.js`; its iOS app uses a `SceneDelegate`
   (the iOS 27 SDK requires the scene lifecycle).
 - `examples/ExpoExample/`: Expo SDK 58 example with every engine: Kitten TTS 2
-  Nano/Pico/Mini on the device, Kitten TTS 2 Cloud and the cloud Nano/Pico/Mini
+  Nano/Pico/Mini on the device, Kitten TTS 2 Ternary and the cloud Nano/Pico/Mini
   (key from the app or `EXPO_PUBLIC_KITTENML_API_KEY`, or
   `EXPO_PUBLIC_KITTENML_BASE_URL`), and 0.8; iOS, Android and web. It and
   BareRNExample import `@kittentts/espeak-ng` (dependency `^1.0.0`) for every

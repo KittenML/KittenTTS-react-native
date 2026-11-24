@@ -2,7 +2,7 @@
 
 `generate()` returns `wordTimings`, which you can use for read-aloud UI,
 karaoke-style highlighting, or reader apps. Every on-device model returns them:
-Kitten TTS 2 Nano, Pico and Mini, and the 0.8 models. Kitten TTS 2 Cloud does
+Kitten TTS 2 Nano, Pico and Mini, and the 0.8 models. Kitten TTS 2 Ternary does
 not (its `wordTimings` is empty).
 
 ```tsx

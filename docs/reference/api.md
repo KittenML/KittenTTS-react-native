@@ -10,8 +10,8 @@ Python package:
 
 | `model` | Without a key | With `apiKey` or `baseUrl` |
 | --- | --- | --- |
-| `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'` | [`KittenTTS2Tiny`](#kitten-tts-2-nano-pico-and-mini-kittentts2tiny), on the device | [`KittenTTS2`](#kitten-tts-2-cloud-kittentts2), on the API |
-| `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`) | error: it runs on the API only | [`KittenTTS2`](#kitten-tts-2-cloud-kittentts2), on the API |
+| `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'` | [`KittenTTS2Tiny`](#kitten-tts-2-nano-pico-and-mini-kittentts2tiny), on the device | [`KittenTTS2`](#kitten-tts-2-ternary-kittentts2), on the API |
+| `'kitten-tts-2'` | error: it runs on the API only | [`KittenTTS2`](#kitten-tts-2-ternary-kittentts2), on the API |
 | Kitten TTS 0.8 models, and no `model` at all | [`KittenTTS`](#kitten-tts-08-kittentts), on the device | [`KittenTTS`](#kitten-tts-08-kittentts), on the device |
 
 All three have `generate()`, `generateStreaming()`, `speak()`, `play()`,
@@ -38,7 +38,7 @@ const tts = await KittenTTS.create(options, (progress, info) => {
 
 Kitten TTS 2 Nano, Pico and Mini report `downloading`, then `complete` (with
 `cached: true` when nothing had to be downloaded). The 0.8 models also report
-`checking-cache`, `cached` and `retrying`. Kitten TTS 2 Cloud downloads nothing
+`checking-cache`, `cached` and `retrying`. Kitten TTS 2 Ternary downloads nothing
 and reports `complete` once.
 
 ## Kitten TTS 2 Nano, Pico and Mini: `KittenTTS2Tiny`
@@ -96,15 +96,15 @@ installed and imported (`import '@kittentts/espeak-ng';`). Without it they throw
 `KITTEN_TTS_2_TINY_MODELS` maps the model names to their repositories, and
 `isTinyModel(model)` tells whether a name is one of them.
 
-## Kitten TTS 2 Cloud: `KittenTTS2`
+## Kitten TTS 2 Ternary: `KittenTTS2`
 
-`KittenTTS.create({ model: 'kitten-tts-2-cloud', ... })` returns a `KittenTTS2`:
-Kitten TTS 2 Cloud (and Nano, Pico and Mini with a key) running on the hosted Kitten API, with the same calls as above.
+`KittenTTS.create({ model: 'kitten-tts-2', ... })` returns a `KittenTTS2`:
+Kitten TTS 2 Ternary (and Nano, Pico and Mini with a key) running on the hosted Kitten API, with the same calls as above.
 See the [Kitten API guide](../guides/kitten-api.md).
 
 ```tsx
 const tts = await KittenTTS.create({
-  model: 'kitten-tts-2-cloud',
+  model: 'kitten-tts-2',
   apiKey: KITTENML_API_KEY,
   player: createExpoAudioPlayer(ExpoAudio),
 });
@@ -115,7 +115,7 @@ await tts.generate('Hello.', { reference: recordingUri, preset: 'stable' });
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `model` | required | `'kitten-tts-2-cloud'` or `'kitten-tts-2'` (Kitten TTS 2 Cloud), `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'`, or a model ID the API lists, such as `'kitten-tts-2-latest'` |
+| `model` | required | `'kitten-tts-2'` (Kitten TTS 2 Ternary), `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'`, or a model ID the API lists, such as `'kitten-tts-2-latest'` |
 | `apiKey` | none | Kitten API key; for development, see the guide |
 | `baseUrl` | `https://api.kittenml.com/v1` | API root, or your own backend that adds the key |
 | `headers` | none | Extra headers sent with every request |
