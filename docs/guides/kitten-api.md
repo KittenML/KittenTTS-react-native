@@ -1,8 +1,8 @@
-# Kitten TTS 2 Cloud
+# Kitten TTS 2 Ternary
 
-Kitten TTS 2 Cloud is KittenML's 1.7B-parameter speech model, with voice cloning,
-expression tags and 170+ voices in 20 languages. It is too large to run inside
-a phone app, so this SDK runs it on the hosted
+Kitten TTS 2 Ternary is KittenML's largest speech model (1.7B parameters, ternary
+weights), with voice cloning, expression tags and 170+ voices in 20 languages. It
+is too large to run inside a phone app, so this SDK runs it on the hosted
 [Kitten API](https://docs.kittenml.com/) instead. It loads through the same
 `KittenTTS.create()` and answers the same calls as the on-device models, the
 way `KittenTTS("KittenML/kitten-tts-2")` does in the Python package.
@@ -18,7 +18,7 @@ import * as ExpoAudio from 'expo-audio';
 import { KittenTTS, createExpoAudioPlayer } from '@kittentts/react-native';
 
 const tts = await KittenTTS.create({
-  model: 'kitten-tts-2-cloud',
+  model: 'kitten-tts-2',
   apiKey: KITTENML_API_KEY, // development only, see below
   player: createExpoAudioPlayer(ExpoAudio),
 });
@@ -58,7 +58,7 @@ and the decoding controls belong to the big model only.
 
 | `model` | Without a key | With `apiKey` or `baseUrl` |
 | --- | --- | --- |
-| `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`) | Error: needs the API | `KittenTTS2`, Kitten TTS 2 Cloud |
+| `'kitten-tts-2'` | Error: needs the API | `KittenTTS2`, Kitten TTS 2 Ternary |
 | `'kitten-tts-2-nano'`, `'-pico'`, `'-mini'` | `KittenTTS2Tiny` on the device ([guide](kitten-tts-2-tiny.md)) | `KittenTTS2` on the API |
 | Kitten TTS 0.8 models (and no `model`) | `KittenTTS` on the device | `KittenTTS` on the device |
 
@@ -72,7 +72,7 @@ own backend. It checks your user's session, adds
 
 ```tsx
 const tts = await KittenTTS.create({
-  model: 'kitten-tts-2-cloud',
+  model: 'kitten-tts-2',
   baseUrl: 'https://your-backend.example/kitten',
   headers: { 'X-Session': sessionToken },
   player: createExpoAudioPlayer(ExpoAudio),
@@ -185,7 +185,7 @@ the one from `expo/fetch`, to get the first chunk while the rest is generated:
 ```tsx
 import { fetch } from 'expo/fetch';
 
-const tts = await KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey, fetch });
+const tts = await KittenTTS.create({ model: 'kitten-tts-2', apiKey, fetch });
 ```
 
 Browsers stream with their own `fetch`.
@@ -235,7 +235,6 @@ every visitor, so always use `baseUrl` there.
 | Python (`kittenml`) | React Native |
 | --- | --- |
 | `KittenTTS("KittenML/kitten-tts-2")` | `await KittenTTS.create({ model: 'kitten-tts-2', apiKey })` |
-| | (`'kitten-tts-2-cloud'` is the same model) |
 | `m.generate(text, voice="Bella")` | `await tts.generate(text, 'bella_en')` |
 | `m.generate(text, reference="me.wav")` | `await tts.generate(text, { reference: uri })` |
 | `for chunk in m.generate_stream(text)` | `for await (const chunk of tts.generateStreaming(text))` |

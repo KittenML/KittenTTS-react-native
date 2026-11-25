@@ -32,9 +32,9 @@ Upgrading from 1.x:
   16, Japanese included), int8 or int4 weights, word timings, and the Python
   package's phonemes. Files download per language. They need React Native 0.75+
   (Hermes). See the [guide](docs/guides/kitten-tts-2-tiny.md).
-- Added Kitten TTS 2 Cloud through the Kitten API:
-  `KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey })` (or `'kitten-tts-2'`,
-  the Python package's name) returns a `KittenTTS2`
+- Added Kitten TTS 2 Ternary through the Kitten API:
+  `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` (the Python package's
+  name) returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,
   plus voice cloning from a `reference` recording, presets, decoding controls and
   `availableVoices`, like the Python package. Failed requests throw
@@ -55,8 +55,6 @@ Upgrading from 1.x:
 - `play()` on a 0.8 `KittenTTS` takes a result from any model.
 - The npm package no longer includes the README's images (`assets/`, 21.6 MB of
   GIFs): it is about 0.5 MB instead of 21.5 MB.
-- `'kitten-tts-2-cloud'` names Kitten TTS 2 Cloud, as KittenML calls it;
-  `'kitten-tts-2'` still works.
 - `npm run example:install -- <example>` installs this checkout of the SDK into
   an example without changing its `package.json`, and a local build of
   `@kittentts/espeak-ng` too when `KITTENTTS_ESPEAK_NG_DIR` names one.

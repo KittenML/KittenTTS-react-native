@@ -121,7 +121,7 @@ export class KittenAPI {
     const apiKey = options.apiKey?.trim();
     if (!apiKey && options.baseUrl === undefined) {
       throw KittenTTSError.invalidArgument(
-        'Kitten TTS 2 Cloud runs on the Kitten API: pass apiKey, or baseUrl for your own backend that adds the key. ' +
+        'Kitten TTS 2 Ternary runs on the Kitten API: pass apiKey, or baseUrl for your own backend that adds the key. ' +
         'Create a key at https://platform.kittenml.com/developers/api-keys',
       );
     }

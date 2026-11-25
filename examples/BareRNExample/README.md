@@ -6,7 +6,7 @@ This is the bare React Native example. Use it if you want to test the SDK in a
 normal React Native app with native `ios/` and `android/` folders.
 
 It is the same app as `examples/ExpoExample` (every engine: Kitten TTS 2 Nano,
-Pico and Mini on the device, Kitten TTS 2 Cloud with the cloud Nano, Pico and
+Pico and Mini on the device, Kitten TTS 2 Ternary with the cloud Nano, Pico and
 Mini, and the 0.8 models), in React Native 0.81 with `react-native-sound` for
 playback.
 
@@ -27,7 +27,7 @@ the native Android/iOS projects.
 ## Features
 
 - One model picker for every engine: Kitten TTS 2 on the device (Nano, Pico,
-  Mini), 0.8 (Nano, Nano int8, Micro, Mini), Kitten TTS 2 Cloud and the cloud
+  Mini), 0.8 (Nano, Nano int8, Micro, Mini), Kitten TTS 2 Ternary and the cloud
   Nano, Pico and Mini
 - Language and voice pickers filled from the loaded model, and speed
 - Speak, stop and generate, with download progress and how long it took

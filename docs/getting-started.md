@@ -7,7 +7,7 @@ instance with Kitten TTS 2 Nano, and generate speech.
 
 | Requirement | Version |
 | --- | --- |
-| React Native | `>= 0.75` (Hermes) for Kitten TTS 2 Nano, Pico and Mini; `>= 0.72` for Kitten TTS 2 Cloud and the 0.8 models |
+| React Native | `>= 0.75` (Hermes) for Kitten TTS 2 Nano, Pico and Mini; `>= 0.72` for Kitten TTS 2 Ternary and the 0.8 models |
 | iOS | `15.1+` |
 | Android | API `24+` |
 | Web | modern browser with WebAssembly support |
@@ -198,17 +198,17 @@ downloads) or on first use with `KittenTTSErrorCode.MissingDependency`
 it ships GPL-3.0-or-later code; one that doesn't ships none. See
 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
-## Kitten TTS 2 Cloud
+## Kitten TTS 2 Ternary
 
-Kitten TTS 2 Cloud, with voice cloning, presets and 20+ languages, runs on the
+Kitten TTS 2 Ternary, with voice cloning, presets and 20+ languages, runs on the
 Kitten API and needs an API key:
 
 ```tsx
-const tts = await KittenTTS.create({ model: 'kitten-tts-2-cloud', apiKey: KITTENML_API_KEY });
+const tts = await KittenTTS.create({ model: 'kitten-tts-2', apiKey: KITTENML_API_KEY });
 await tts.generate('Hello.', 'bella_en');
 ```
 
-See the [Kitten TTS 2 Cloud guide](guides/kitten-api.md), including how to keep
+See the [Kitten TTS 2 Ternary guide](guides/kitten-api.md), including how to keep
 the key off the device.
 
 ## Kitten TTS 0.8

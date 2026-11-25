@@ -7,7 +7,7 @@
 <p align="center">
   Kitten TTS 2 text-to-speech for React Native and React Native Web.
   <br />
-  Nano, Pico and Mini run on the device on iOS, Android and the web; Kitten TTS 2 Cloud runs on the Kitten API.
+  Nano, Pico and Mini run on the device on iOS, Android and the web; Kitten TTS 2 Ternary runs on the Kitten API.
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/web-example.gif" alt="KittenTTS React Native Web example in a browser: Kitten TTS 2 Cloud generating speech" width="722" />
+  <img src="assets/web-example.gif" alt="KittenTTS React Native Web example in a browser: Kitten TTS 2 Ternary generating speech" width="722" />
 </p>
 
 <p align="center">
@@ -60,7 +60,7 @@ the model name, as the Python package does:
 - **Kitten TTS 2 Nano, Pico and Mini, on the device** - 8 languages (Mini 16,
   Japanese included), int8 or int4 weights, word timings, and exactly the Python
   package's phonemes. Files download per language, or ship inside the app.
-- **Kitten TTS 2 Cloud, on the Kitten API** - the largest Kitten TTS 2, with
+- **Kitten TTS 2 Ternary, on the Kitten API** - the largest Kitten TTS 2, with
   voice cloning, presets and 20+ languages. Nano, Pico and Mini run there too
   when you pass an API key.
 - **Kitten TTS 0.8, on the device** - the older English models, still supported.
@@ -185,9 +185,9 @@ With no `model` at all, `create()` still loads 0.8 Nano, as before.
 
 ---
 
-## Kitten TTS 2 Cloud
+## Kitten TTS 2 Ternary
 
-Kitten TTS 2 Cloud, the largest Kitten TTS 2, is too large to run inside an app,
+Kitten TTS 2 Ternary, the largest Kitten TTS 2, is too large to run inside an app,
 so the SDK runs it on the hosted [Kitten API](https://docs.kittenml.com/). It
 loads through the same `KittenTTS.create()` and answers the same calls, like
 `KittenTTS("KittenML/kitten-tts-2")` in the Python package (`'kitten-tts-2'`
@@ -198,7 +198,7 @@ import * as ExpoAudio from 'expo-audio';
 import { KittenTTS, createExpoAudioPlayer } from '@kittentts/react-native';
 
 const tts = await KittenTTS.create({
-  model: 'kitten-tts-2-cloud',
+  model: 'kitten-tts-2',
   apiKey: KITTENML_API_KEY, // ship with baseUrl and your own backend instead
   player: createExpoAudioPlayer(ExpoAudio),
 });
@@ -219,7 +219,7 @@ for await (const chunk of tts.generateStreaming(longText, 'bella_en')) {
 and billed to your KittenML account. With an `apiKey` (or `baseUrl`), Nano, Pico
 and Mini run on the API too: `KittenTTS.create({ model: 'kitten-tts-2-nano', apiKey })`.
 
-[Kitten TTS 2 Cloud guide →](docs/guides/kitten-api.md)
+[Kitten TTS 2 Ternary guide →](docs/guides/kitten-api.md)
 
 ---
 
@@ -255,7 +255,7 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 ## Sample Apps
 
 - [`examples/ExpoExample`](examples/ExpoExample) - Expo (SDK 58) app with every
-  engine: Kitten TTS 2 Nano, Pico and Mini on the device, the Kitten TTS 2 Cloud
+  engine: Kitten TTS 2 Nano, Pico and Mini on the device, the Kitten TTS 2 Ternary
   models, and the 0.8 models. Runs on iOS, Android and the web, and imports
   `@kittentts/espeak-ng` for every language.
 - [`examples/BareRNExample`](examples/BareRNExample) - the same app in a bare
@@ -277,7 +277,7 @@ install that too:
 ## Features
 
 - [Kitten TTS 2 Nano, Pico and Mini](docs/guides/kitten-tts-2-tiny.md) on iOS, Android and the web, in 8 languages (Mini 16), with the Python package's phonemes.
-- [Kitten TTS 2 Cloud](docs/guides/kitten-api.md) through the Kitten API, with voice cloning, and Nano, Pico and Mini in the cloud.
+- [Kitten TTS 2 Ternary](docs/guides/kitten-api.md) through the Kitten API, with voice cloning, and Nano, Pico and Mini in the cloud.
 - [Kitten TTS 0.8](docs/reference/models.md#kitten-tts-08), the older English models, on the device.
 - [Downloads per language](docs/guides/kitten-tts-2-tiny.md#what-gets-downloaded), cached on the device, with progress callbacks.
 - [Bundled offline assets](docs/guides/offline-assets.md) for apps that cannot depend on a first-run download.
@@ -298,7 +298,7 @@ install that too:
 | Kitten TTS 2 Nano | `'kitten-tts-2-nano'` | 17M | 17 MB / 8.8 MB per language | 8 |
 | Kitten TTS 2 Pico | `'kitten-tts-2-pico'` | 7.2M | 8 MB / 4 MB per language | 8 |
 | Kitten TTS 2 Mini | `'kitten-tts-2-mini'` | 82M | 83 MB / 47 MB for every language | 16, Japanese included |
-| Kitten TTS 2 Cloud | `'kitten-tts-2-cloud'` | 1.7B | nothing: it runs on the Kitten API | 20+, voice cloning |
+| Kitten TTS 2 Ternary | `'kitten-tts-2'` | 1.7B | nothing: it runs on the Kitten API | 20+, voice cloning |
 
 Nano, Pico and Mini run on the device and need React Native 0.75 or newer
 (Hermes). Nano is a good default; Pico is the fastest; Mini speaks the most
@@ -339,7 +339,7 @@ Leo) belong to Kitten TTS 0.8:
 await tts08.speak('Luna speaking.', KittenVoice.Luna);
 ```
 
-Kitten TTS 2 Cloud lists its own voice IDs, such as `bella_en`, in
+Kitten TTS 2 Ternary lists its own voice IDs, such as `bella_en`, in
 `tts.availableVoices`.
 
 ---
@@ -349,7 +349,7 @@ Kitten TTS 2 Cloud lists its own voice IDs, such as `bella_en`, in
 - [Docs overview](docs/README.md)
 - [Getting started](docs/getting-started.md)
 - [Kitten TTS 2 Nano, Pico and Mini](docs/guides/kitten-tts-2-tiny.md)
-- [Kitten TTS 2 Cloud](docs/guides/kitten-api.md)
+- [Kitten TTS 2 Ternary](docs/guides/kitten-api.md)
 - [Playback](docs/guides/playback.md)
 - [Word timings](docs/guides/word-timings.md)
 - [Bundled offline assets](docs/guides/offline-assets.md)
@@ -369,7 +369,7 @@ Tutorials:
 ## System Requirements
 
 - React Native `>= 0.75` (Hermes) for Kitten TTS 2 Nano, Pico and Mini;
-  `>= 0.72` for Kitten TTS 2 Cloud and the 0.8 models
+  `>= 0.72` for Kitten TTS 2 Ternary and the 0.8 models
 - iOS `15.1+`
 - Android API `24+`
 - Node.js `20+` recommended for examples

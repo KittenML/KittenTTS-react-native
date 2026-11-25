@@ -209,7 +209,6 @@ test('KittenTTS.create() picks the engine from the model, like the Python packag
   }
   // The big model runs only on the API; without a key create() says so.
   assert.equal(engineFor({ model: 'kitten-tts-2' }), 'api');
-  assert.equal(engineFor({ model: 'kitten-tts-2-cloud' }), 'api');
   assert.equal(engineFor({ model: 'kitten-tts-2-latest', apiKey: KEY }), 'api');
 });
 
@@ -229,13 +228,11 @@ test('create() lists the voices once, with the key as a bearer token', async () 
   assert.equal(fetch.calls[0].redirect, undefined, 'continuation redirects must be followed');
 });
 
-test("'kitten-tts-2-cloud' and 'kitten-tts-2' both name the newest Kitten TTS 2 Cloud", async () => {
-  for (const model of ['kitten-tts-2-cloud', 'kitten-tts-2']) {
-    const fetch = scriptedFetch(voicesPage(PUBLIC_VOICES));
-    const tts = await TestKittenTTS2.create({ model, apiKey: KEY, fetch });
-    assert.equal(tts.model, 'kitten-tts-2-latest', model);
-    assert.match(fetch.calls[0].url, /model=kitten-tts-2-latest/);
-  }
+test("'kitten-tts-2' names the newest Kitten TTS 2 Ternary", async () => {
+  const fetch = scriptedFetch(voicesPage(PUBLIC_VOICES));
+  const tts = await TestKittenTTS2.create({ model: 'kitten-tts-2', apiKey: KEY, fetch });
+  assert.equal(tts.model, 'kitten-tts-2-latest');
+  assert.match(fetch.calls[0].url, /model=kitten-tts-2-latest/);
 });
 
 test('create() needs a key or a backend, and never exposes the key', async () => {

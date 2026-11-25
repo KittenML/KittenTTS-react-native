@@ -5,7 +5,7 @@ that want to save WAV data, stream chunks, use a custom player, or sync UI state
 with the audio.
 
 The examples use Kitten TTS 2 Nano. The players and `speak()`, `play()` and
-`stopSpeaking()` work the same with Kitten TTS 2 Cloud and the 0.8 models.
+`stopSpeaking()` work the same with Kitten TTS 2 Ternary and the 0.8 models.
 
 ## Generate Without Playing
 
@@ -29,7 +29,7 @@ await tts.speak('Read this sentence.', { voice: 'Eleanor', speed: 1.0 });
 ```
 
 The optional third argument is speed; larger is faster. Kitten TTS 2 Nano, Pico
-and Mini take any positive speed, Kitten TTS 2 Cloud `0.25` to `4.0`, and the
+and Mini take any positive speed, Kitten TTS 2 Ternary `0.25` to `4.0`, and the
 0.8 models `0.5` to `2.0` (with a `KittenVoice`, such as
 `tts.speak(text, KittenVoice.Bella, 1.0)`).
 

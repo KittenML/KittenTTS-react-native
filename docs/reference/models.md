@@ -1,7 +1,7 @@
 # Models And Voices
 
 Kitten TTS 2 is the current model family: Nano, Pico and Mini run on the device,
-and Kitten TTS 2 Cloud runs on the Kitten API. Kitten TTS 0.8, the older English
+and Kitten TTS 2 Ternary runs on the Kitten API. Kitten TTS 0.8, the older English
 models, is still supported. Pick the smallest model that sounds good enough for
 your use case.
 
@@ -12,7 +12,7 @@ your use case.
 | [Kitten TTS 2 Nano](https://huggingface.co/KittenML/kitten-tts-2-nano) | `'kitten-tts-2-nano'` | 17M | 17 MB / 8.8 MB per language | 8 | on the device; on the API with `apiKey` |
 | [Kitten TTS 2 Pico](https://huggingface.co/KittenML/kitten-tts-2-pico) | `'kitten-tts-2-pico'` | 7.2M | 8 MB / 4 MB per language | 8 | on the device; on the API with `apiKey` |
 | [Kitten TTS 2 Mini](https://huggingface.co/KittenML/kitten-tts-2-mini) | `'kitten-tts-2-mini'` | 82M | 83 MB / 47 MB for every language | 16, Japanese included | on the device; on the API with `apiKey` |
-| Kitten TTS 2 Cloud | `'kitten-tts-2-cloud'` (or `'kitten-tts-2'`) | 1.7B | nothing is downloaded | 20+, voice cloning | on the Kitten API only |
+| Kitten TTS 2 Ternary | `'kitten-tts-2'` | 1.7B | nothing is downloaded | 20+, voice cloning | on the Kitten API only |
 
 ```tsx
 const tts = await KittenTTS.create({
@@ -56,7 +56,7 @@ await tts.speak('Guten Morgen.', { voice: 'Anna' });   // the voice picks German
 
 Names work in any case. Without a voice, the language's first one speaks.
 
-Kitten TTS 2 Cloud, and Nano, Pico and Mini on the API, use the API's voice IDs,
+Kitten TTS 2 Ternary, and Nano, Pico and Mini on the API, use the API's voice IDs,
 such as `bella_en`: see `tts.availableVoices` and the
 [Kitten API guide](../guides/kitten-api.md#voices).
 
